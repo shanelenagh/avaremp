@@ -15,26 +15,38 @@ class MainApp extends StatefulWidget {
 class MainAppState extends State<MainApp> {
   
   AudibleTrafficAlerts? alertPlayer;
+  bool isAudioLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    AudibleTrafficAlerts.getAndStartAudibleTrafficAlerts(1.1).then((value)  { 
+      alertPlayer = value;
+      isAudioLoaded = true; 
+      print("Audible alerts loaded");
+      setState(() {}); 
+    });
+    return;
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       home: Scaffold(
-        body: const Center(
-          child: Text("Play audio by pushing button below")
+        body: Center(
+          child: Text(!isAudioLoaded ? "Loading audio..." : "Play audio by pushing button below")
         ),
-        floatingActionButton: FloatingActionButton(
+        floatingActionButton: isAudioLoaded ? FloatingActionButton(
           onPressed: playIt,
           child: const Text("Play Audio")
-        ),
+        ) : null,
       ),
     );
   }
 
   void playIt() async {
-    AudibleTrafficAlerts? player = await AudibleTrafficAlerts.getAndStartAudibleTrafficAlerts(1.1);
     print("created audible alerts");
-    player?.playSomeStuff();
+    await alertPlayer?.playSomeStuff();
     print("tried to play some stuff");
   }
 }

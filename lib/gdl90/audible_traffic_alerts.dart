@@ -70,8 +70,12 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
     final listAudioMap = { 
       _twentiesToNinetiesAudios: [ "tr_20.mp3", "tr_30.mp3", "tr_40.mp3", "tr_50.mp3", "tr_60.mp3", "tr_70.mp3", "tr_80.mp3", "tr_90.mp3" ], 
       _alphabetAudios: [ "tr_alpha.mp3", "tr_bravo.mp3", "tr_charlie.mp3", "tr_delta.mp3", "tr_echo.mp3", "tr_foxtrot.mp3", "tr_golf.mp3",
-        "tr_hotel.mp3", "tr_lima.mp3", "tr_mike.mp3", "tr_november.mp3", "tr_oscar.mp3", "tr_papa.mp3", "tr_quebec.mp3", "tr_romeo.mp3",
-        "tr_sierra.mp3", "tr_tango.mp3", "tr_uniform.mp3", "tr_victor.mp3", "tr_whiskey.mp3", "tr_xray.mp3", "tr_yankee.mp3", "tr_zulu.mp3" ]
+        "tr_hotel.mp3", "tr_india.mp3", "tr_juliet.mp3", "tr_kilo.mp3", "tr_lima.mp3", "tr_mike.mp3", "tr_november.mp3", "tr_oscar.mp3", 
+        "tr_papa.mp3", "tr_quebec.mp3", "tr_romeo.mp3", "tr_sierra.mp3", "tr_tango.mp3", "tr_uniform.mp3", "tr_victor.mp3", "tr_whiskey.mp3", 
+        "tr_xray.mp3", "tr_yankee.mp3", "tr_zulu.mp3" ],
+      _numberAudios: [ "tr_00.mp3", "tr_01.mp3", "tr_02.mp3", "tr_03.mp3", "tr_04.mp3", "tr_05.mp3", "tr_06.mp3", "tr_07.mp3", "tr_08.mp3",
+        "tr_09.mp3", "tr_10.mp3", "tr_11.mp3", "tr_12.mp3", "tr_13.mp3", "tr_14.mp3", "tr_15.mp3", "tr_16.mp3", "tr_17.mp3", "tr_18.mp3",
+        "tr_19.mp3" ]
     };
     for (final singleEntry in singleAudioMap.entries) {
       await _populateAudio(singleEntry.key, singleEntry.value, playRate);
@@ -94,7 +98,8 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
   }
 
   Future<void> playSomeStuff() async {
-    await AudioSequencePlayer([ _trafficAudio, _bogeyAudio ], this).playAudioSequence();
+    await AudioSequencePlayer([ 
+      _trafficAudio, _twentiesToNinetiesAudios[3], _numberAudios[4], _pointAudio, _numberAudios[8], _numberAudios[3], _numberAudios[4] ], this).playAudioSequence();
   }
   
   @override
@@ -150,32 +155,31 @@ abstract class PlayAudioSequenceCompletionListner {
 class AudioSequencePlayer {
   final List<AudioPlayer?> _audioPlayers;
   final Completer _completer;
+  StreamSubscription<void>? _lastAudioPlayerSubscription;
+  final PlayAudioSequenceCompletionListner? _sequenceCompletionListener;
+  int _seqIndex = 0;
 
   AudioSequencePlayer(List<AudioPlayer?> audioPlayers, [PlayAudioSequenceCompletionListner? sequenceCompletionListener ]) 
-    : _audioPlayers = audioPlayers, _completer = Completer(), assert(audioPlayers.isNotEmpty)
+    : _audioPlayers = audioPlayers, _completer = Completer(), _sequenceCompletionListener = sequenceCompletionListener, assert(audioPlayers.isNotEmpty)
   {
-    final List<StreamSubscription<void>?> audioPlayerSubscriptions = [];
-    for (int i = 0; i < _audioPlayers.length; i++) {
-      if (i < _audioPlayers.length-1) {
-        audioPlayerSubscriptions.add(_audioPlayers[i]?.onPlayerComplete.listen((event) {
-          _audioPlayers[i+1]?.resume();
-        }));
-      } else {
-        audioPlayerSubscriptions.add(_audioPlayers[i]?.onPlayerComplete.listen((event) {
-          for (final subscription in audioPlayerSubscriptions) {
-            subscription?.cancel();
-          }          
-          _completer.complete();
-          if (sequenceCompletionListener != null) {
-            sequenceCompletionListener.sequencePlayCompletion();
+    _lastAudioPlayerSubscription = _audioPlayers[0]?.onPlayerComplete.listen(_handleNextSeqAudio);      
+  }
+
+  void _handleNextSeqAudio(event) {
+      _lastAudioPlayerSubscription?.cancel();
+      if (_seqIndex < _audioPlayers.length) {
+         _lastAudioPlayerSubscription = _audioPlayers[_seqIndex]?.onPlayerComplete.listen(_handleNextSeqAudio);
+          _audioPlayers[_seqIndex++]?.resume();
+      } else {        
+          if (_sequenceCompletionListener != null) {
+            _sequenceCompletionListener.sequencePlayCompletion();
           }
-        }));
+          _completer.complete();
       }
-    }
   }
 
   Future<void> playAudioSequence() {
-    _audioPlayers[0]?.resume();
+    _audioPlayers[_seqIndex++]?.resume();
     return _completer.future;
   }
 }

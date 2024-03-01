@@ -90,11 +90,11 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
   }
 
   Future<void> _populateAudio(AudioPlayer player, String assetSourceName, double playRate) async {
-      await _audioCache.load(assetSourceName);
-      player.audioCache = _audioCache;
-      await player.setSource(AssetSource(assetSourceName));
-      await player.setPlaybackRate(playRate);
-      await player.setPlayerMode(PlayerMode.lowLatency);     
+    await _audioCache.load(assetSourceName);
+    player.audioCache = _audioCache;
+    await player.setSource(AssetSource(assetSourceName));
+    await player.setPlaybackRate(playRate);
+    await player.setPlayerMode(PlayerMode.lowLatency);     
   }
 
   Future<void> playSomeStuff() async {
@@ -111,40 +111,40 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
 
 
 class _ClosingEvent {
-    final double _closingTimeSec;
-    final double _closestApproachDistanceNmi;
-    final int _eventTimeMillis;
-    final bool _isCriticallyClose;
+  final double _closingTimeSec;
+  final double _closestApproachDistanceNmi;
+  final int _eventTimeMillis;
+  final bool _isCriticallyClose;
 
-    _ClosingEvent(double closingTimeSec, double closestApproachDistanceNmi, bool isCriticallyClose) 
-      : _closingTimeSec = closingTimeSec, _closestApproachDistanceNmi = closestApproachDistanceNmi, 
-      _isCriticallyClose = isCriticallyClose, _eventTimeMillis = DateTime.now().millisecondsSinceEpoch;
+  _ClosingEvent(double closingTimeSec, double closestApproachDistanceNmi, bool isCriticallyClose) 
+    : _closingTimeSec = closingTimeSec, _closestApproachDistanceNmi = closestApproachDistanceNmi, 
+    _isCriticallyClose = isCriticallyClose, _eventTimeMillis = DateTime.now().millisecondsSinceEpoch;
 
-    double closingSeconds() {
-        return _closingTimeSec-(DateTime.now().millisecondsSinceEpoch - _eventTimeMillis)/1000.0000;
-    }
+  double closingSeconds() {
+    return _closingTimeSec-(DateTime.now().millisecondsSinceEpoch - _eventTimeMillis)/1000.0000;
+  }
 }
 
 
 class _AlertItem {
-    final TrafficReportMessage _traffic;
-    final Position _ownLocation;
-    final double _distanceNmi;
-    final int _ownAltitude;
-    final _ClosingEvent _closingEvent;
+  final TrafficReportMessage _traffic;
+  final Position _ownLocation;
+  final double _distanceNmi;
+  final int _ownAltitude;
+  final _ClosingEvent _closingEvent;
 
-    _AlertItem(TrafficReportMessage traffic, Position ownLocation, int ownAltitude, _ClosingEvent closingEvent, double distnaceNmi) 
-      : _traffic = traffic, _ownLocation = ownLocation, _ownAltitude = ownAltitude, _closingEvent = closingEvent, _distanceNmi = distnaceNmi;
+  _AlertItem(TrafficReportMessage traffic, Position ownLocation, int ownAltitude, _ClosingEvent closingEvent, double distnaceNmi) 
+    : _traffic = traffic, _ownLocation = ownLocation, _ownAltitude = ownAltitude, _closingEvent = closingEvent, _distanceNmi = distnaceNmi;
 
-    @override
-    int get hashCode => _traffic.callSign.hashCode;
+  @override
+  int get hashCode => _traffic.callSign.hashCode;
 
-    @override
-    bool operator ==(Object other) {
-        return other is _AlertItem
-          && other.runtimeType == runtimeType
-          && other._traffic.callSign == _traffic.callSign;
-    }
+  @override
+  bool operator ==(Object other) {
+    return other is _AlertItem
+      && other.runtimeType == runtimeType
+      && other._traffic.callSign == _traffic.callSign;
+  }
 }
 
 
@@ -166,16 +166,16 @@ class AudioSequencePlayer {
   }
 
   void _handleNextSeqAudio(event) {
-      _lastAudioPlayerSubscription?.cancel();
-      if (_seqIndex < _audioPlayers.length) {
-         _lastAudioPlayerSubscription = _audioPlayers[_seqIndex]?.onPlayerComplete.listen(_handleNextSeqAudio);
-          _audioPlayers[_seqIndex++]?.resume();
-      } else {        
-          if (_sequenceCompletionListener != null) {
-            _sequenceCompletionListener.sequencePlayCompletion();
-          }
-          _completer.complete();
+    _lastAudioPlayerSubscription?.cancel();
+    if (_seqIndex < _audioPlayers.length) {
+      _lastAudioPlayerSubscription = _audioPlayers[_seqIndex]?.onPlayerComplete.listen(_handleNextSeqAudio);
+      _audioPlayers[_seqIndex++]?.resume();
+    } else {        
+      if (_sequenceCompletionListener != null) {
+        _sequenceCompletionListener.sequencePlayCompletion();
       }
+      _completer.complete();
+    }
   }
 
   Future<void> playAudioSequence() {

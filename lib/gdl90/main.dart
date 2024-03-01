@@ -45,7 +45,6 @@ class MainAppState extends State<MainApp> {
   }
 
   void playIt() async {
-    print("created audible alerts");
     await alertPlayer?.playSomeStuff();
     print("tried to play some stuff");
   }

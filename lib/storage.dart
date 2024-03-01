@@ -158,6 +158,7 @@ class Storage {
             Position p = Position(longitude: m0.coordinates.longitude, latitude: m0.coordinates.latitude, timestamp: DateTime.timestamp(), accuracy: 0, altitude: m0.altitude, altitudeAccuracy: 0, heading: m0.heading, headingAccuracy: 0, speed: m0.velocity, speedAccuracy: 0);
             _lastMsGpsSignal = DateTime.now().millisecondsSinceEpoch; // update time when GPS signal was last received
             _gpsStack.push(p);
+            trafficCache.ownshipLocation = p;
           }
           if(m != null && m.type == MessageType.trafficReport) {
             TrafficReportMessage m0 = m as TrafficReportMessage;

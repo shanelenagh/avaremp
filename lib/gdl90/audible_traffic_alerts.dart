@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:audioplayers/audioplayers.dart';
-import 'traffic_report_message.dart';
+import 'package:avaremp/gdl90/traffic_cache.dart';
 import 'package:geolocator/geolocator.dart';
+import 'traffic_math.dart';
+import 'package:avaremp/gdl90/traffic_report_message.dart';
 
 
 class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
@@ -30,6 +32,8 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
   final AudioPlayer _withinAudio;
   final AudioPlayer _pointAudio;
 
+  final List<_AlertItem> _alertQueue;
+
   bool _isRunning = false;
 
 
@@ -49,7 +53,7 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
   }
 
   AudibleTrafficAlerts._privateConstructor()
-    : _audioCache = AudioCache(prefix: "assets/audio/traffic_alerts/"), _trafficAudio = AudioPlayer(), _bogeyAudio = AudioPlayer(),
+    : _alertQueue = [], _audioCache = AudioCache(prefix: "assets/audio/traffic_alerts/"), _trafficAudio = AudioPlayer(), _bogeyAudio = AudioPlayer(),
     _closingInAudio = AudioPlayer(), _overAudio = AudioPlayer(), _lowAudio = AudioPlayer(), _highAudio = AudioPlayer(), _sameAltitudeAudio = AudioPlayer(),
     _oClockAudio = AudioPlayer(), _twentiesToNinetiesAudios = [], _hundredAudio = AudioPlayer(), _thousandAudio = AudioPlayer(), _atAudio = AudioPlayer(), 
     _alphabetAudios = [], _numberAudios = [], _secondsAudio = AudioPlayer(), _milesAudio = AudioPlayer(), _climbingAudio = AudioPlayer(), _descendingAudio = AudioPlayer(), 
@@ -82,9 +86,9 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
     }
     for (final listEntry in listAudioMap.entries) {
       for (final assetName in listEntry.value) {
-        final ap = AudioPlayer();
-        await _populateAudio(ap, assetName, playRate);
-        listEntry.key.add(ap);
+        final player = AudioPlayer();
+        await _populateAudio(player, assetName, playRate);
+        listEntry.key.add(player);
       }
     }
   }
@@ -97,8 +101,27 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
     await player.setPlayerMode(PlayerMode.lowLatency);     
   }
 
+  void processTrafficForAudibleAlerts(List<Traffic?> traffic, Position? ownshipLocation) {
+    print("oh, handling audible alerts!!!!!!!!!");
+    _AlertItem i = _AlertItem(traffic[0], ownshipLocation, 100, null, 10);
+    _alertQueue.add(i);
+    scheduleMicrotask(runAudibleAlertsQueueProcessing);
+  }
+
+  void runAudibleAlertsQueueProcessing() {
+    if (!_isRunning) {
+      return;
+    }
+    if (_alertQueue.isEmpty) {
+      return;
+    }
+
+    _AlertItem alert = _alertQueue.removeLast();
+    print("processing alert ${alert}");
+  }
+
   Future<void> playSomeStuff() async {
-    await AudioSequencePlayer([ 
+    await _AudioSequencePlayer([ 
       _trafficAudio, _twentiesToNinetiesAudios[3], _numberAudios[4], _pointAudio, _numberAudios[8], _numberAudios[3], _numberAudios[4] ], this).playAudioSequence();
   }
   
@@ -127,23 +150,23 @@ class _ClosingEvent {
 
 
 class _AlertItem {
-  final TrafficReportMessage _traffic;
-  final Position _ownLocation;
+  final Traffic? _traffic;
+  final Position? _ownLocation;
   final double _distanceNmi;
   final int _ownAltitude;
-  final _ClosingEvent _closingEvent;
+  final _ClosingEvent? _closingEvent;
 
-  _AlertItem(TrafficReportMessage traffic, Position ownLocation, int ownAltitude, _ClosingEvent closingEvent, double distnaceNmi) 
+  _AlertItem(Traffic? traffic, Position? ownLocation, int ownAltitude, _ClosingEvent? closingEvent, double distnaceNmi) 
     : _traffic = traffic, _ownLocation = ownLocation, _ownAltitude = ownAltitude, _closingEvent = closingEvent, _distanceNmi = distnaceNmi;
 
   @override
-  int get hashCode => _traffic.callSign.hashCode;
+  int get hashCode => _traffic?.message.callSign.hashCode ?? 0;
 
   @override
   bool operator ==(Object other) {
     return other is _AlertItem
       && other.runtimeType == runtimeType
-      && other._traffic.callSign == _traffic.callSign;
+      && other._traffic?.message.callSign == _traffic?.message.callSign;
   }
 }
 
@@ -152,14 +175,14 @@ abstract class PlayAudioSequenceCompletionListner {
   void sequencePlayCompletion();
 }
 
-class AudioSequencePlayer {
+class _AudioSequencePlayer {
   final List<AudioPlayer?> _audioPlayers;
   final Completer _completer;
   StreamSubscription<void>? _lastAudioPlayerSubscription;
   final PlayAudioSequenceCompletionListner? _sequenceCompletionListener;
   int _seqIndex = 0;
 
-  AudioSequencePlayer(List<AudioPlayer?> audioPlayers, [PlayAudioSequenceCompletionListner? sequenceCompletionListener ]) 
+  _AudioSequencePlayer(List<AudioPlayer?> audioPlayers, [PlayAudioSequenceCompletionListner? sequenceCompletionListener ]) 
     : _audioPlayers = audioPlayers, _completer = Completer(), _sequenceCompletionListener = sequenceCompletionListener, assert(audioPlayers.isNotEmpty)
   {
     _lastAudioPlayerSubscription = _audioPlayers[0]?.onPlayerComplete.listen(_handleNextSeqAudio);      

@@ -120,7 +120,8 @@ class AppSettings {
   }
 
   bool isInternalGps() {
-    return Settings.getValue("key-internal-gps", defaultValue: true) as bool;
+    //TODO: Set me back after merge (and find out how to gracefully set for testing)
+    return false; //Settings.getValue("key-internal-gps", defaultValue: true) as bool;
   }
 
   void setInternalGps(bool value) {

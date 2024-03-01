@@ -3,8 +3,10 @@ import 'package:avaremp/gdl90/traffic_report_message.dart';
 import 'package:avaremp/geo_calculations.dart';
 import 'package:avaremp/storage.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
+import 'package:avaremp/gdl90/audible_traffic_alerts.dart';
 
 import '../gps.dart';
 
@@ -29,6 +31,14 @@ class Traffic {
 class TrafficCache {
   static const int maxEntries = 20;
   final List<Traffic?> _traffic = List.filled(maxEntries + 1, null); // +1 is the empty slot where new traffic is added
+  Position? _ownshipLocation;
+
+  Position? get ownshipLocation { return _ownshipLocation; }
+  set ownshipLocation(Position? p) {
+    _ownshipLocation = p;
+    // process any audible alert from ownship position change
+    _handleAudibleAlerts();
+  }
 
   double findDistance(LatLng coordinate, double altitude) {
     // find 3d distance between current position and airplane
@@ -63,6 +73,10 @@ class TrafficCache {
         }
         final Traffic trafficNew = Traffic(message);
         _traffic[index] = trafficNew;
+
+        // process any audible alerts from traffic (if enabled)
+        _handleAudibleAlerts();
+
         return;
       }
     }
@@ -73,6 +87,9 @@ class TrafficCache {
 
     // sort
     _traffic.sort(_trafficSort);
+
+    // process any audible alerts from traffic (if enabled)
+    _handleAudibleAlerts();
 
   }
 
@@ -97,6 +114,12 @@ class TrafficCache {
       }
     }
     return 0;
+  }
+
+  void _handleAudibleAlerts() {
+    AudibleTrafficAlerts.getAndStartAudibleTrafficAlerts(1).then((value) => {
+      value?.processTrafficForAudibleAlerts(_traffic, _ownshipLocation)
+    });
   }
 
   List<Traffic> getTraffic() {

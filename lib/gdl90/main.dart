@@ -26,7 +26,6 @@ class MainAppState extends State<MainApp> {
       print("Audible alerts loaded");
       setState(() {}); 
     });
-    return;
   }
 
   @override

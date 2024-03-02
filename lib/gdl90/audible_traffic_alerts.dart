@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:avaremp/gdl90/traffic_cache.dart';
+import 'package:avaremp/storage.dart';
 import 'package:geolocator/geolocator.dart';
 import 'traffic_math.dart';
 import 'package:avaremp/gdl90/traffic_report_message.dart';
@@ -33,6 +35,13 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
   final AudioPlayer _pointAudio;
 
   final List<_AlertItem> _alertQueue;
+
+  bool _tempPrefIsAudibleGroundAlertsEnabled = false;
+  int _tempPrefAudibleTrafficAlertsMinSpeed = 10;
+  int _tempPrefAudibleTrafficAlertsDistanceMinimum = 10;
+  bool _tempPrefIsAudibleClosingInAlerts = true;
+  double _tempPrefTrafficAlertsHeight = 10000;
+
 
   bool _isRunning = false;
 
@@ -101,11 +110,47 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
     await player.setPlayerMode(PlayerMode.lowLatency);     
   }
 
-  void processTrafficForAudibleAlerts(List<Traffic?> traffic, Position? ownshipLocation) {
-    print("oh, handling audible alerts!!!!!!!!!");
-    _AlertItem i = _AlertItem(traffic[0], ownshipLocation, 100, null, 10);
-    _alertQueue.add(i);
-    scheduleMicrotask(runAudibleAlertsQueueProcessing);
+  void processTrafficForAudibleAlerts(List<Traffic?> trafficList, Position? ownshipLocation) {
+    //print("oh, handling audible alerts!!!!!!!!!");
+    if (ownshipLocation == null) {
+      return;
+    }
+
+    for (final traffic in trafficList) {
+      if (traffic == null) {
+        continue;
+      }
+      //TODO: Add ICAO/code setting and check to ensure traffic doesn't match it (e.g., Susan C's ghost ownship alerts: final String ownTailNumber = 
+      //TODO: Add airborne flag for traffic message and check this: if (!(traffic.message.isAirborne || _tempPrefIsAudibleGroundAlertsEnabled)) { continue; }
+      final double altDiff = ownshipLocation.altitude - traffic.message.altitude;
+      //TODO: do distanct key to ensure new data
+      final double curDistance;
+      if (/* TODO: last update bailout stuff && */ altDiff.abs() < _tempPrefTrafficAlertsHeight
+        && (curDistance = greatCircleDistanceNmi(ownshipLocation.latitude, ownshipLocation.longitude,
+          traffic.message.coordinates.latitude, traffic.message.coordinates.longitude)) < _tempPrefAudibleTrafficAlertsDistanceMinimum
+      ) {
+        print("!!!!!!!!!!!!!!!!!!!!!!!!!! putting one in, woot: ${traffic.message.callSign}:${traffic.message.icao} altdiff=${altDiff} and dist=${curDistance}");
+        _upsertTrafficAlertQueue(
+          _AlertItem(traffic, ownshipLocation, ownshipLocation.altitude.round()/*TODO*/, null /*TODO*/, curDistance)
+        );
+        scheduleMicrotask(runAudibleAlertsQueueProcessing);
+      } 
+
+    }
+
+    // _AlertItem i = _AlertItem(traffic[0], ownshipLocation, 100, null, 10);
+    // _alertQueue.add(i);
+    // scheduleMicrotask(runAudibleAlertsQueueProcessing);
+  }
+
+  void _upsertTrafficAlertQueue(_AlertItem alert) {
+    final int idx = _alertQueue.indexOf(alert);
+    if (idx == -1) {
+      _alertQueue.add(alert);
+    } else {
+      print("UPDATING LIST");
+      _alertQueue.replaceRange(idx, idx, [alert]);
+    }
   }
 
   void runAudibleAlertsQueueProcessing() {
@@ -117,7 +162,7 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
     }
 
     _AlertItem alert = _alertQueue.removeLast();
-    print("processing alert ${alert}");
+    print("processing alerts ${alert._traffic?.message.icao} of list size (now) ${_alertQueue.length}");
   }
 
   Future<void> playSomeStuff() async {
@@ -166,7 +211,10 @@ class _AlertItem {
   bool operator ==(Object other) {
     return other is _AlertItem
       && other.runtimeType == runtimeType
-      && other._traffic?.message.callSign == _traffic?.message.callSign;
+      && (
+        other._traffic?.message.icao == _traffic?.message.icao
+        || other._traffic?.message.callSign == _traffic?.message.callSign
+      );
   }
 }
 

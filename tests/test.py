@@ -1,8 +1,13 @@
 import socket
 import time
+import sys
 
-infile = input("Enter file name:")
+if len(sys.argv) < 2:
+    infile = input("Enter file name:")
+else:
+    infile = sys.argv[1]
 file = open(infile, "rb")
+
 
 socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 

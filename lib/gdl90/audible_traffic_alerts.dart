@@ -1,12 +1,9 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:avaremp/gdl90/traffic_cache.dart';
-import 'package:avaremp/storage.dart';
 import 'package:geolocator/geolocator.dart';
 import 'traffic_math.dart';
-import 'package:avaremp/gdl90/traffic_report_message.dart';
 
 
 class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
@@ -35,12 +32,15 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
   final AudioPlayer _pointAudio;
 
   final List<_AlertItem> _alertQueue;
+  final Map<String,String> _lastTrafficPositionUpdateTimeMap;
+  final Map<String,int> _lastTrafficAlertTimeMap;
 
   bool _tempPrefIsAudibleGroundAlertsEnabled = false;
   int _tempPrefAudibleTrafficAlertsMinSpeed = 10;
-  int _tempPrefAudibleTrafficAlertsDistanceMinimum = 10;
+  int _tempPrefAudibleTrafficAlertsDistanceMinimum = 5;
   bool _tempPrefIsAudibleClosingInAlerts = true;
-  double _tempPrefTrafficAlertsHeight = 10000;
+  double _tempPrefTrafficAlertsHeight = 2000;
+  int _tempPrefMaxAlertFrequencySeconds = 10;
 
 
   bool _isRunning = false;
@@ -62,11 +62,13 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
   }
 
   AudibleTrafficAlerts._privateConstructor()
-    : _alertQueue = [], _audioCache = AudioCache(prefix: "assets/audio/traffic_alerts/"), _trafficAudio = AudioPlayer(), _bogeyAudio = AudioPlayer(),
-    _closingInAudio = AudioPlayer(), _overAudio = AudioPlayer(), _lowAudio = AudioPlayer(), _highAudio = AudioPlayer(), _sameAltitudeAudio = AudioPlayer(),
-    _oClockAudio = AudioPlayer(), _twentiesToNinetiesAudios = [], _hundredAudio = AudioPlayer(), _thousandAudio = AudioPlayer(), _atAudio = AudioPlayer(), 
-    _alphabetAudios = [], _numberAudios = [], _secondsAudio = AudioPlayer(), _milesAudio = AudioPlayer(), _climbingAudio = AudioPlayer(), _descendingAudio = AudioPlayer(), 
-    _levelAudio = AudioPlayer(), _criticallyCloseChirpAudio = AudioPlayer(), _withinAudio = AudioPlayer(), _pointAudio = AudioPlayer();
+    : _alertQueue = [], _lastTrafficPositionUpdateTimeMap = {}, _lastTrafficAlertTimeMap = {}, _audioCache = AudioCache(prefix: "assets/audio/traffic_alerts/"), 
+    _trafficAudio = AudioPlayer(), _bogeyAudio = AudioPlayer(), _closingInAudio = AudioPlayer(), _overAudio = AudioPlayer(), 
+    _lowAudio = AudioPlayer(), _highAudio = AudioPlayer(), _sameAltitudeAudio = AudioPlayer(), _oClockAudio = AudioPlayer(), 
+    _twentiesToNinetiesAudios = [], _hundredAudio = AudioPlayer(), _thousandAudio = AudioPlayer(), _atAudio = AudioPlayer(), 
+    _alphabetAudios = [], _numberAudios = [], _secondsAudio = AudioPlayer(), _milesAudio = AudioPlayer(), _climbingAudio = AudioPlayer(), 
+    _descendingAudio = AudioPlayer(), _levelAudio = AudioPlayer(), _criticallyCloseChirpAudio = AudioPlayer(), _withinAudio = AudioPlayer(), 
+    _pointAudio = AudioPlayer();
 
   Future<void> _destroy() async {
     await _audioCache.clearAll();
@@ -110,7 +112,7 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
     await player.setPlayerMode(PlayerMode.lowLatency);     
   }
 
-  void processTrafficForAudibleAlerts(List<Traffic?> trafficList, Position? ownshipLocation) {
+  void processTrafficForAudibleAlerts(List<Traffic?> trafficList, Position? ownshipLocation, DateTime? ownshipUpdateTime) {
     //print("oh, handling audible alerts!!!!!!!!!");
     if (ownshipLocation == null) {
       return;
@@ -123,34 +125,45 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
       //TODO: Add ICAO/code setting and check to ensure traffic doesn't match it (e.g., Susan C's ghost ownship alerts: final String ownTailNumber = 
       //TODO: Add airborne flag for traffic message and check this: if (!(traffic.message.isAirborne || _tempPrefIsAudibleGroundAlertsEnabled)) { continue; }
       final double altDiff = ownshipLocation.altitude - traffic.message.altitude;
-      //TODO: do distanct key to ensure new data
+			final String trafficPositionTimeCalcUpdateValue = "${traffic.message.time.millisecondsSinceEpoch}_${ownshipUpdateTime?.millisecondsSinceEpoch}";
+			final String lastTrafficPositionUpdateKey = "${traffic.message.callSign}:${traffic.message.icao}";  
+      final String? lastTrafficPositionUpdateValue = _lastTrafficPositionUpdateTimeMap[lastTrafficPositionUpdateKey];
       final double curDistance;
-      if (/* TODO: last update bailout stuff && */ altDiff.abs() < _tempPrefTrafficAlertsHeight
+      if ((lastTrafficPositionUpdateValue == null || lastTrafficPositionUpdateValue != trafficPositionTimeCalcUpdateValue)
+        && altDiff.abs() < _tempPrefTrafficAlertsHeight
         && (curDistance = greatCircleDistanceNmi(ownshipLocation.latitude, ownshipLocation.longitude,
           traffic.message.coordinates.latitude, traffic.message.coordinates.longitude)) < _tempPrefAudibleTrafficAlertsDistanceMinimum
       ) {
-        print("!!!!!!!!!!!!!!!!!!!!!!!!!! putting one in, woot: ${traffic.message.callSign}:${traffic.message.icao} altdiff=${altDiff} and dist=${curDistance}");
+        _log("!!!!!!!!!!!!!!!!!!!!!!!!!! putting one in, woot: ${traffic.message.callSign}:${traffic.message.icao} altdiff=${altDiff} and dist=${curDistance} of time ${traffic.message.time}");
         _upsertTrafficAlertQueue(
           _AlertItem(traffic, ownshipLocation, ownshipLocation.altitude.round()/*TODO*/, null /*TODO*/, curDistance)
         );
-        scheduleMicrotask(runAudibleAlertsQueueProcessing);
+        _lastTrafficPositionUpdateTimeMap[lastTrafficPositionUpdateKey] = trafficPositionTimeCalcUpdateValue;
+        //scheduleMicrotask(runAudibleAlertsQueueProcessing);
       } 
-
-    }
+    }  //TODO: ELSE --> REMOVE stuff from queue that is no longer eligible on this iteration
 
     // _AlertItem i = _AlertItem(traffic[0], ownshipLocation, 100, null, 10);
-    // _alertQueue.add(i);
-    // scheduleMicrotask(runAudibleAlertsQueueProcessing);
+    // _alertQueue.add(i);\
+    if (_alertQueue.isNotEmpty)
+      scheduleMicrotask(runAudibleAlertsQueueProcessing);
   }
 
   void _upsertTrafficAlertQueue(_AlertItem alert) {
-    final int idx = _alertQueue.indexOf(alert);
-    if (idx == -1) {
-      _alertQueue.add(alert);
+    if (!_alertQueue.contains(alert)) {
+      _log("inserting list: ${alert._traffic?.message.icao} and list currently size: ${_alertQueue.length}");
+      _alertQueue.add(alert);      
     } else {
-      print("UPDATING LIST");
-      _alertQueue.replaceRange(idx, idx, [alert]);
+      _log("Already there ***********************************************************************************");
     }
+    // final int idx = _alertQueue.indexOf(alert);
+    // if (idx == -1) {
+    //   print("inserting list: ${alert._traffic?.message.icao} and list currently size: ${_alertQueue.length}");
+    //   _alertQueue.add(alert);
+    // } else {
+    //   print("UPDATING LIST: ${alert._traffic?.message.icao} and list currently size: ${_alertQueue.length}");
+    //   _alertQueue.replaceRange(idx, idx, [alert]);
+    // }
   }
 
   void runAudibleAlertsQueueProcessing() {
@@ -160,9 +173,27 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
     if (_alertQueue.isEmpty) {
       return;
     }
+  //final String lastTrafficPositionUpdateKey = "${traffic.message.callSign}:${traffic.message.icao}"; 
+    _AlertItem nextAlert = _alertQueue[0];
+    int timeToWaitForThisTraffic = 0;
+    final String lastTrafficAlertTimeKey = "${nextAlert._traffic?.message.callSign}:${nextAlert._traffic?.message.icao}";
+    final int? lastTrafficAlertTimeValue = _lastTrafficAlertTimeMap[lastTrafficAlertTimeKey];
+    //TODO: Also put minimum separate (timeToWaitForAny) for all alerts
+    //TODO: Cede place in line to "next one" if available (e.g., move this one to back and call this again)
+    if (lastTrafficAlertTimeValue == null
+      || (timeToWaitForThisTraffic = (_tempPrefMaxAlertFrequencySeconds * 1000) - (DateTime.now().millisecondsSinceEpoch - lastTrafficAlertTimeValue)) <= 0
+    ) {
+      _lastTrafficAlertTimeMap[lastTrafficAlertTimeKey] = DateTime.now().millisecondsSinceEpoch;
+      _log("processing alerts ${nextAlert._traffic?.message.icao} of list size (now) ${_alertQueue.length} as time to wait is ${timeToWaitForThisTraffic} and last val was ${lastTrafficAlertTimeValue}");
+      _alertQueue.removeAt(0);
+    } else {
+      _log("waiting to alert for ${lastTrafficAlertTimeKey} for ${timeToWaitForThisTraffic}ms");
+      Future.delayed(Duration(milliseconds: timeToWaitForThisTraffic), runAudibleAlertsQueueProcessing);
+    }
+  }
 
-    _AlertItem alert = _alertQueue.removeLast();
-    print("processing alerts ${alert._traffic?.message.icao} of list size (now) ${_alertQueue.length}");
+  static void _log(String msg) {
+    print("${DateTime.now()}: ${msg}");
   }
 
   Future<void> playSomeStuff() async {
@@ -173,7 +204,7 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
   @override
   void sequencePlayCompletion() {
     // TODO: implement sequencePlayCompletion
-    print("Finished playing sequence, per listener callback");
+    _log("Finished playing sequence, per listener callback");
   }
 }
 
@@ -215,6 +246,8 @@ class _AlertItem {
         other._traffic?.message.icao == _traffic?.message.icao
         || other._traffic?.message.callSign == _traffic?.message.callSign
       );
+      //&& other._traffic?.message.time == _traffic?.message.time;
+
   }
 }
 

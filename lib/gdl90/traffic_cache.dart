@@ -31,14 +31,17 @@ class Traffic {
 class TrafficCache {
   static const int maxEntries = 20;
   final List<Traffic?> _traffic = List.filled(maxEntries + 1, null); // +1 is the empty slot where new traffic is added
+  
   Position? _ownshipLocation;
-
   Position? get ownshipLocation { return _ownshipLocation; }
   set ownshipLocation(Position? p) {
     _ownshipLocation = p;
+    _ownshipUpdateTime = DateTime.now();
     // process any audible alert from ownship position change
-    _handleAudibleAlerts();
+    handleAudibleAlerts();
   }
+  DateTime? _ownshipUpdateTime;
+  DateTime? get ownshipUpdateTime { return _ownshipUpdateTime; }
 
   double findDistance(LatLng coordinate, double altitude) {
     // find 3d distance between current position and airplane
@@ -75,7 +78,7 @@ class TrafficCache {
         _traffic[index] = trafficNew;
 
         // process any audible alerts from traffic (if enabled)
-        _handleAudibleAlerts();
+        handleAudibleAlerts();
 
         return;
       }
@@ -89,7 +92,7 @@ class TrafficCache {
     _traffic.sort(_trafficSort);
 
     // process any audible alerts from traffic (if enabled)
-    _handleAudibleAlerts();
+    handleAudibleAlerts();
 
   }
 
@@ -116,9 +119,9 @@ class TrafficCache {
     return 0;
   }
 
-  void _handleAudibleAlerts() {
+  void handleAudibleAlerts() {
     AudibleTrafficAlerts.getAndStartAudibleTrafficAlerts(1).then((value) => {
-      value?.processTrafficForAudibleAlerts(_traffic, _ownshipLocation)
+      value?.processTrafficForAudibleAlerts(_traffic, _ownshipLocation, _ownshipUpdateTime)
     });
   }
 

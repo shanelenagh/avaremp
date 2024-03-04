@@ -50,6 +50,7 @@ class AudibleTrafficAlerts {
   int _tempPrefAudibleTrafficAlertsDistanceMinimum = 5;
   double _tempPrefTrafficAlertsHeight = 5000;
   int _tempPrefMaxAlertFrequencySeconds = 15;
+  int _tempTimeBetweenAnyAlertMs = 750;
 
   bool _tempPrefIsAudibleClosingInAlerts = true;
   double _tempClosingAlertAltitude = 1000;
@@ -248,7 +249,7 @@ class AudibleTrafficAlerts {
         _log("Finished playing sequence, per listener callback");
         _isPlaying = false;
         if (_alertQueue.isNotEmpty) {
-          scheduleMicrotask(runAudibleAlertsQueueProcessing);        
+          Future.delayed(Duration(milliseconds: _tempTimeBetweenAnyAlertMs), runAudibleAlertsQueueProcessing);        
         }
       });
     } else if (timeToWaitForThisTraffic > 0) {

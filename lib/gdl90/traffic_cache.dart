@@ -120,7 +120,7 @@ class TrafficCache {
   }
 
   void handleAudibleAlerts() {
-    AudibleTrafficAlerts.getAndStartAudibleTrafficAlerts(1).then((value) => {
+    AudibleTrafficAlerts.getAndStartAudibleTrafficAlerts(1.5).then((value) => {
       value?.processTrafficForAudibleAlerts(_traffic, _ownshipLocation, _ownshipUpdateTime)
     });
   }

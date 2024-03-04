@@ -44,7 +44,7 @@ class MainAppState extends State<MainApp> {
   }
 
   void playIt() async {
-    await alertPlayer?.playSomeStuff();
+    //await alertPlayer?.playSomeStuff();
     print("tried to play some stuff");
   }
 }

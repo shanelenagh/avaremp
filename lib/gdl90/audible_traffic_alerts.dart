@@ -5,6 +5,7 @@ import 'package:avaremp/gdl90/traffic_cache.dart';
 import 'package:geolocator/geolocator.dart';
 import 'traffic_math.dart';
 
+enum TrafficIdOption { PHONETIC_ALPHA_ID, FULL_CALLSIGN }
 
 class AudibleTrafficAlerts {
 
@@ -34,13 +35,17 @@ class AudibleTrafficAlerts {
   final List<_AlertItem> _alertQueue;
   final Map<String,String> _lastTrafficPositionUpdateTimeMap;
   final Map<String,int> _lastTrafficAlertTimeMap;
+  final List<String> _phoneticAlphaIcaoSequenceQueue;
 
   bool _tempPrefIsAudibleGroundAlertsEnabled = false;
+  bool _tempPrefTopGunDorkMode = false;
   int _tempPrefAudibleTrafficAlertsMinSpeed = 10;
   int _tempPrefAudibleTrafficAlertsDistanceMinimum = 5;
   bool _tempPrefIsAudibleClosingInAlerts = true;
-  double _tempPrefTrafficAlertsHeight = 2000;
-  int _tempPrefMaxAlertFrequencySeconds = 10;
+  double _tempPrefTrafficAlertsHeight = 5000;
+  int _tempPrefMaxAlertFrequencySeconds = 15;
+  TrafficIdOption _tempTrafficIdOption = TrafficIdOption.PHONETIC_ALPHA_ID;
+  
 
   bool _isRunning = false;
   bool _isPlaying = false;
@@ -62,7 +67,8 @@ class AudibleTrafficAlerts {
   }
 
   AudibleTrafficAlerts._privateConstructor()
-    : _alertQueue = [], _lastTrafficPositionUpdateTimeMap = {}, _lastTrafficAlertTimeMap = {}, _audioCache = AudioCache(prefix: "assets/audio/traffic_alerts/"), 
+    : _alertQueue = [], _lastTrafficPositionUpdateTimeMap = {}, _lastTrafficAlertTimeMap = {}, _phoneticAlphaIcaoSequenceQueue = [],
+    _audioCache = AudioCache(prefix: "assets/audio/traffic_alerts/"), 
     _trafficAudio = AudioPlayer(), _bogeyAudio = AudioPlayer(), _closingInAudio = AudioPlayer(), _overAudio = AudioPlayer(), 
     _lowAudio = AudioPlayer(), _highAudio = AudioPlayer(), _sameAltitudeAudio = AudioPlayer(), _oClockAudio = AudioPlayer(), 
     _twentiesToNinetiesAudios = [], _hundredAudio = AudioPlayer(), _thousandAudio = AudioPlayer(), _atAudio = AudioPlayer(), 
@@ -74,7 +80,7 @@ class AudibleTrafficAlerts {
     await _audioCache.clearAll();
   }
 
-  Future<void> _loadAudio(double playRate) async {
+  Future<List<dynamic>> _loadAudio(double playRate) async {
     final singleAudioMap = { 
       _trafficAudio: "tr_traffic.mp3", _bogeyAudio: "tr_bogey.mp3", _closingInAudio: "tr_cl_closingin.mp3", _overAudio: "tr_cl_over.mp3",
       _lowAudio: "tr_low.mp3", _highAudio: "tr_high.mp3", _sameAltitudeAudio: "tr_same_altitude.mp3", _oClockAudio: "tr_oclock.mp3",
@@ -92,24 +98,28 @@ class AudibleTrafficAlerts {
         "tr_09.mp3", "tr_10.mp3", "tr_11.mp3", "tr_12.mp3", "tr_13.mp3", "tr_14.mp3", "tr_15.mp3", "tr_16.mp3", "tr_17.mp3", "tr_18.mp3",
         "tr_19.mp3" ]
     };
+    final List<Future> futures = [];
     for (final singleEntry in singleAudioMap.entries) {
-      await _populateAudio(singleEntry.key, singleEntry.value, playRate);
+      futures.add(_populateAudio(singleEntry.key, singleEntry.value, playRate));
     }
     for (final listEntry in listAudioMap.entries) {
       for (final assetName in listEntry.value) {
         final player = AudioPlayer();
-        await _populateAudio(player, assetName, playRate);
+        futures.add(_populateAudio(player, assetName, playRate));
         listEntry.key.add(player);
       }
     }
+    return Future.wait(futures);
   }
 
-  Future<void> _populateAudio(AudioPlayer player, String assetSourceName, double playRate) async {
-    await _audioCache.load(assetSourceName);
+  Future<List<dynamic>> _populateAudio(AudioPlayer player, String assetSourceName, double playRate) async {
+    final List<Future> futures = [];
+    futures.add(_audioCache.load(assetSourceName));
     player.audioCache = _audioCache;
-    await player.setSource(AssetSource(assetSourceName));
-    await player.setPlaybackRate(playRate);
-    await player.setPlayerMode(PlayerMode.lowLatency);     
+    futures.add(player.setSource(AssetSource(assetSourceName)));
+    futures.add(player.setPlayerMode(PlayerMode.lowLatency));   
+    futures.add(player.setPlaybackRate(playRate));
+    return Future.wait(futures); 
   }
 
   void processTrafficForAudibleAlerts(List<Traffic?> trafficList, Position? ownshipLocation, DateTime? ownshipUpdateTime) {
@@ -126,7 +136,7 @@ class AudibleTrafficAlerts {
       //TODO: Add airborne flag for traffic message and check this: if (!(traffic.message.isAirborne || _tempPrefIsAudibleGroundAlertsEnabled)) { continue; }
       final double altDiff = ownshipLocation.altitude - traffic.message.altitude;
 			final String trafficPositionTimeCalcUpdateValue = "${traffic.message.time.millisecondsSinceEpoch}_${ownshipUpdateTime?.millisecondsSinceEpoch}";
-			final String trafficKey = "${traffic.message.callSign}:${traffic.message.icao}";  
+			final String trafficKey = _getTrafficKey(traffic);  
       final String? lastTrafficPositionUpdateValue = _lastTrafficPositionUpdateTimeMap[trafficKey];
       final double curDistance;
       if ((lastTrafficPositionUpdateValue == null || lastTrafficPositionUpdateValue != trafficPositionTimeCalcUpdateValue)
@@ -136,7 +146,7 @@ class AudibleTrafficAlerts {
       ) {
         _log("!!!!!!!!!!!!!!!!!!!!!!!!!! putting one in, woot: ${trafficKey} having value ${lastTrafficPositionUpdateValue} vs. calced ${trafficPositionTimeCalcUpdateValue} altdiff=${altDiff} and dist=${curDistance} of time ${traffic.message.time}");
         hasInserts = hasInserts || _upsertTrafficAlertQueue(
-          _AlertItem(traffic, ownshipLocation, ownshipLocation.altitude.round()/*TODO*/, null /*TODO*/, curDistance)
+          _AlertItem(traffic, ownshipLocation, ownshipLocation.altitude/*TODO*/, null /*TODO*/, curDistance)
         );
         _lastTrafficPositionUpdateTimeMap[trafficKey] = trafficPositionTimeCalcUpdateValue;
       } //TODO: ELSE --> REMOVE stuff from queue that is no longer eligible on this iteration
@@ -147,14 +157,14 @@ class AudibleTrafficAlerts {
   }
 
   bool _upsertTrafficAlertQueue(_AlertItem alert) {
-    final int idx = _alertQueue.indexOf(alert);
-    if (idx == -1) {
+    final int existingIndex = _alertQueue.indexOf(alert);
+    if (existingIndex == -1) {
       _log("inserting list: ${alert._traffic?.message.icao} and list currently size: ${_alertQueue.length}");
       _alertQueue.add(alert);
       return true;
     } else {
       _log("UPDATING LIST: ${alert._traffic?.message.icao} and list currently size: ${_alertQueue.length}");
-      _alertQueue[idx] = alert;
+      _alertQueue[existingIndex] = alert;
     }
     return false;
   }
@@ -163,9 +173,9 @@ class AudibleTrafficAlerts {
     if (!_isRunning || _isPlaying || _alertQueue.isEmpty) {
       return;
     }
-    _AlertItem nextAlert = _alertQueue[0];
+    final _AlertItem nextAlert = _alertQueue[0];
     int timeToWaitForThisTraffic = 0;
-    final String trafficKey = "${nextAlert._traffic?.message.callSign}:${nextAlert._traffic?.message.icao}";
+    final String trafficKey = _getTrafficKey(nextAlert._traffic);
     final int? lastTrafficAlertTimeValue = _lastTrafficAlertTimeMap[trafficKey];
     //TODO: Also put minimum separate (timeToWaitForAny) for all alerts
     //TODO: Cede place in line to "next one" if available (e.g., move this one to back and call this again)
@@ -176,7 +186,7 @@ class AudibleTrafficAlerts {
       _log("====================================== processing alerts ${trafficKey} of list size (now) ${_alertQueue.length} as time to wait is ${timeToWaitForThisTraffic} and last val was ${lastTrafficAlertTimeValue}");
       _isPlaying = true;
       _alertQueue.removeAt(0);
-      _AudioSequencePlayer([ _trafficAudio]).playAudioSequence().then((value) { 
+      _AudioSequencePlayer(_buildAlertSoundIdSequence(nextAlert)).playAudioSequence().then((value) { 
         _log("Finished playing sequence, per listener callback");
         _isPlaying = false;
         if (_alertQueue.isNotEmpty) {
@@ -188,6 +198,70 @@ class AudibleTrafficAlerts {
       Future.delayed(Duration(milliseconds: timeToWaitForThisTraffic), runAudibleAlertsQueueProcessing);
     }
   }
+
+
+  /**
+   * Construct soundId sequence based on alert properties and preference configuration
+   * @param alert Alert item to build soundId sequence for
+   * @return Sequence of soundId's for the soundplayer that represents the assembled alert
+   */
+  List<AudioPlayer> _buildAlertSoundIdSequence(final _AlertItem alert) {
+      final List<AudioPlayer> alertAudio = [];
+      // if (alert.closingEvent != null && alert.closingEvent.isCriticallyClose)
+      //     alertAudio.add(criticallyCloseChirpSoundId);
+      alertAudio.add(_tempPrefTopGunDorkMode ? _bogeyAudio : _trafficAudio);
+      switch (_tempTrafficIdOption) {
+          case TrafficIdOption.PHONETIC_ALPHA_ID:
+              _addPhoneticAlphaTrafficIdAudio(alertAudio, alert);
+              break;
+          case TrafficIdOption.FULL_CALLSIGN:
+          //     addFullCallsignTrafficIdAudio(alertAudio, alert.trafficCallsign);
+      }
+      // if (alert.closingEvent != null) {
+      //     addTimeToClosestPointOfApproachAudio(alertAudio, alert.closingEvent, speakingRate);
+      // }
+
+
+      final int clockHour = nearestClockHourFromHeadingAndLocations(alert._ownLocation?.latitude??0,
+										alert._ownLocation?.longitude??0, alert._traffic?.message.coordinates.latitude??0, 
+                    alert._traffic?.message.coordinates.longitude??0, alert._ownLocation?.heading??0);
+      _addPositionAudio(alertAudio, clockHour, alert._ownAltitude - (alert._traffic?.message.altitude??0));
+      
+      
+      // if (this.distanceCalloutOption != DistanceCalloutOption.NONE) {
+      //     addDistanceAudio(alertAudio, alert.distanceNmi);
+      // }
+      /*
+      if (this.verticalAttitudeCallout && alert.vspeed != Integer.MAX_VALUE /* Indeterminate value */) {
+          addVerticalAttitudeAudio(alertAudio, alert.vspeed);
+      }
+      return alertAudio;
+      */
+      return alertAudio;
+  }
+
+  void _addPositionAudio(final List<AudioPlayer> alertAudio, final int clockHour, final double altitudeDiff) {
+      alertAudio.add(_atAudio);
+      alertAudio.add(_numberAudios[clockHour]);
+      alertAudio.add(_oClockAudio);
+      alertAudio.add(altitudeDiff.abs() < 100 ? _sameAltitudeAudio
+              : (altitudeDiff > 0 ? _lowAudio : _highAudio));
+  }  
+
+  void _addPhoneticAlphaTrafficIdAudio(final List<AudioPlayer> alertAudio, _AlertItem alert) {
+    final String trafficKey = _getTrafficKey(alert._traffic);
+    int icaoIndex = _phoneticAlphaIcaoSequenceQueue.indexOf(trafficKey);
+    if (icaoIndex == -1) {
+        _phoneticAlphaIcaoSequenceQueue.add(trafficKey);
+        icaoIndex = _phoneticAlphaIcaoSequenceQueue.length-1;
+    }
+    alertAudio.add(_alphabetAudios[icaoIndex % _alphabetAudios.length]);
+  } 
+  
+  String _getTrafficKey(Traffic? traffic) {
+    return "${traffic?.message.callSign}:${traffic?.message.icao}";
+  }
+
 
   static void _log(String msg) {
     print("${DateTime.now()}: ${msg}");
@@ -215,10 +289,10 @@ class _AlertItem {
   final Traffic? _traffic;
   final Position? _ownLocation;
   final double _distanceNmi;
-  final int _ownAltitude;
+  final double _ownAltitude;
   final _ClosingEvent? _closingEvent;
 
-  _AlertItem(Traffic? traffic, Position? ownLocation, int ownAltitude, _ClosingEvent? closingEvent, double distnaceNmi) 
+  _AlertItem(Traffic? traffic, Position? ownLocation, double ownAltitude, _ClosingEvent? closingEvent, double distnaceNmi) 
     : _traffic = traffic, _ownLocation = ownLocation, _ownAltitude = ownAltitude, _closingEvent = closingEvent, _distanceNmi = distnaceNmi;
 
   @override

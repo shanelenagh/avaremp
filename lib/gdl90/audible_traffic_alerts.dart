@@ -6,7 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'traffic_math.dart';
 
 
-class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
+class AudibleTrafficAlerts implements _PlayAudioSequenceCompletionListner {
 
   static AudibleTrafficAlerts? _instance;
 
@@ -119,7 +119,6 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
       return;
     }
 
-    //bool hasUpdates = false;
     bool hasInserts = false;
     for (final traffic in trafficList) {
       if (traffic == null) {
@@ -142,10 +141,8 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
           _AlertItem(traffic, ownshipLocation, ownshipLocation.altitude.round()/*TODO*/, null /*TODO*/, curDistance)
         );
         _lastTrafficPositionUpdateTimeMap[trafficKey] = trafficPositionTimeCalcUpdateValue;
-        //scheduleMicrotask(runAudibleAlertsQueueProcessing);
-      } 
-    }  //TODO: ELSE --> REMOVE stuff from queue that is no longer eligible on this iteration
-
+      } //TODO: ELSE --> REMOVE stuff from queue that is no longer eligible on this iteration
+    }  
 
     if (hasInserts)
       scheduleMicrotask(runAudibleAlertsQueueProcessing);
@@ -180,8 +177,8 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
       _lastTrafficAlertTimeMap[trafficKey] = DateTime.now().millisecondsSinceEpoch;
       _log("====================================== processing alerts ${trafficKey} of list size (now) ${_alertQueue.length} as time to wait is ${timeToWaitForThisTraffic} and last val was ${lastTrafficAlertTimeValue}");
       _isPlaying = true;
-      _AudioSequencePlayer([ _trafficAudio], this).playAudioSequence();
       _alertQueue.removeAt(0);
+      _AudioSequencePlayer([ _trafficAudio], this).playAudioSequence();
     } else if (timeToWaitForThisTraffic > 0) {
       _log("waiting to alert for ${trafficKey} for ${timeToWaitForThisTraffic}ms");
       Future.delayed(Duration(milliseconds: timeToWaitForThisTraffic), runAudibleAlertsQueueProcessing);
@@ -199,7 +196,6 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
   
   @override
   void sequencePlayCompletion() {
-    // TODO: implement sequencePlayCompletion
     _log("Finished playing sequence, per listener callback");
     _isPlaying = false;
     if (_alertQueue.isNotEmpty)
@@ -251,7 +247,7 @@ class _AlertItem {
 }
 
 
-abstract class PlayAudioSequenceCompletionListner {
+abstract class _PlayAudioSequenceCompletionListner {
   void sequencePlayCompletion();
 }
 
@@ -259,10 +255,10 @@ class _AudioSequencePlayer {
   final List<AudioPlayer?> _audioPlayers;
   final Completer _completer;
   StreamSubscription<void>? _lastAudioPlayerSubscription;
-  final PlayAudioSequenceCompletionListner? _sequenceCompletionListener;
+  final _PlayAudioSequenceCompletionListner? _sequenceCompletionListener;
   int _seqIndex = 0;
 
-  _AudioSequencePlayer(List<AudioPlayer?> audioPlayers, [PlayAudioSequenceCompletionListner? sequenceCompletionListener ]) 
+  _AudioSequencePlayer(List<AudioPlayer?> audioPlayers, [_PlayAudioSequenceCompletionListner? sequenceCompletionListener ]) 
     : _audioPlayers = audioPlayers, _completer = Completer(), _sequenceCompletionListener = sequenceCompletionListener, assert(audioPlayers.isNotEmpty)
   {
     _lastAudioPlayerSubscription = _audioPlayers[0]?.onPlayerComplete.listen(_handleNextSeqAudio);      

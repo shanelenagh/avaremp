@@ -182,7 +182,19 @@ class AudibleTrafficAlerts {
     final int existingIndex = _alertQueue.indexOf(alert);
     if (existingIndex == -1) {
       _log("inserting list: ${alert._traffic?.message.icao} and list currently size: ${_alertQueue.length}");
-      _alertQueue.add(alert);
+      // If this is a "critically close" alert, put it ahead of the first non-critically close alert
+      final int alertQueueSize;
+      if (alert._closingEvent != null && alert._closingEvent._isCriticallyClose && (alertQueueSize = _alertQueue.length) > 0) {
+        for (int i = 0; i < alertQueueSize; i++) {
+          final _AlertItem curAlert = _alertQueue[i];
+          if (curAlert._closingEvent == null || !curAlert._closingEvent._isCriticallyClose) {
+            _alertQueue.insert(i, alert);
+            break;
+          }
+        }
+      } else {
+        _alertQueue.add(alert);
+      }
       return true;
     } else {
       _log("UPDATING LIST: ${alert._traffic?.message.icao} and list currently size: ${_alertQueue.length}");

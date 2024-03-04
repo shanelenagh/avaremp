@@ -118,6 +118,8 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
       return;
     }
 
+    //bool hasUpdates = false;
+    bool hasInserts = false;
     for (final traffic in trafficList) {
       if (traffic == null) {
         continue;
@@ -126,44 +128,43 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
       //TODO: Add airborne flag for traffic message and check this: if (!(traffic.message.isAirborne || _tempPrefIsAudibleGroundAlertsEnabled)) { continue; }
       final double altDiff = ownshipLocation.altitude - traffic.message.altitude;
 			final String trafficPositionTimeCalcUpdateValue = "${traffic.message.time.millisecondsSinceEpoch}_${ownshipUpdateTime?.millisecondsSinceEpoch}";
-			final String lastTrafficPositionUpdateKey = "${traffic.message.callSign}:${traffic.message.icao}";  
-      final String? lastTrafficPositionUpdateValue = _lastTrafficPositionUpdateTimeMap[lastTrafficPositionUpdateKey];
+			final String trafficKey = "${traffic.message.callSign}:${traffic.message.icao}";  
+      final String? lastTrafficPositionUpdateValue = _lastTrafficPositionUpdateTimeMap[trafficKey];
       final double curDistance;
       if ((lastTrafficPositionUpdateValue == null || lastTrafficPositionUpdateValue != trafficPositionTimeCalcUpdateValue)
         && altDiff.abs() < _tempPrefTrafficAlertsHeight
         && (curDistance = greatCircleDistanceNmi(ownshipLocation.latitude, ownshipLocation.longitude,
           traffic.message.coordinates.latitude, traffic.message.coordinates.longitude)) < _tempPrefAudibleTrafficAlertsDistanceMinimum
       ) {
-        _log("!!!!!!!!!!!!!!!!!!!!!!!!!! putting one in, woot: ${traffic.message.callSign}:${traffic.message.icao} altdiff=${altDiff} and dist=${curDistance} of time ${traffic.message.time}");
-        _upsertTrafficAlertQueue(
+        _log("!!!!!!!!!!!!!!!!!!!!!!!!!! putting one in, woot: ${trafficKey} having value ${lastTrafficPositionUpdateValue} vs. calced ${trafficPositionTimeCalcUpdateValue} altdiff=${altDiff} and dist=${curDistance} of time ${traffic.message.time}");
+        //final int lastTrafficAlertTimeValue = _lastTrafficAlertTimeMap[lastTrafficPositionUpdateKey]??0;
+        //hasUpdates = hasUpdates || 
+        //  ((_tempPrefMaxAlertFrequencySeconds * 1000) - (DateTime.now().millisecondsSinceEpoch - lastTrafficAlertTimeValue) <= 0);
+        hasInserts = hasInserts || _upsertTrafficAlertQueue(
           _AlertItem(traffic, ownshipLocation, ownshipLocation.altitude.round()/*TODO*/, null /*TODO*/, curDistance)
         );
-        _lastTrafficPositionUpdateTimeMap[lastTrafficPositionUpdateKey] = trafficPositionTimeCalcUpdateValue;
+        _lastTrafficPositionUpdateTimeMap[trafficKey] = trafficPositionTimeCalcUpdateValue;
         //scheduleMicrotask(runAudibleAlertsQueueProcessing);
       } 
     }  //TODO: ELSE --> REMOVE stuff from queue that is no longer eligible on this iteration
 
     // _AlertItem i = _AlertItem(traffic[0], ownshipLocation, 100, null, 10);
     // _alertQueue.add(i);\
-    if (_alertQueue.isNotEmpty)
+    if (hasInserts)
       scheduleMicrotask(runAudibleAlertsQueueProcessing);
   }
 
-  void _upsertTrafficAlertQueue(_AlertItem alert) {
-    if (!_alertQueue.contains(alert)) {
+  bool _upsertTrafficAlertQueue(_AlertItem alert) {
+    final int idx = _alertQueue.indexOf(alert);
+    if (idx == -1) {
       _log("inserting list: ${alert._traffic?.message.icao} and list currently size: ${_alertQueue.length}");
-      _alertQueue.add(alert);      
+      _alertQueue.add(alert);
+      return true;
     } else {
-      _log("Already there ***********************************************************************************");
+      _log("UPDATING LIST: ${alert._traffic?.message.icao} and list currently size: ${_alertQueue.length}");
+      _alertQueue[idx] = alert;
     }
-    // final int idx = _alertQueue.indexOf(alert);
-    // if (idx == -1) {
-    //   print("inserting list: ${alert._traffic?.message.icao} and list currently size: ${_alertQueue.length}");
-    //   _alertQueue.add(alert);
-    // } else {
-    //   print("UPDATING LIST: ${alert._traffic?.message.icao} and list currently size: ${_alertQueue.length}");
-    //   _alertQueue.replaceRange(idx, idx, [alert]);
-    // }
+    return false;
   }
 
   void runAudibleAlertsQueueProcessing() {
@@ -176,18 +177,18 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
   //final String lastTrafficPositionUpdateKey = "${traffic.message.callSign}:${traffic.message.icao}"; 
     _AlertItem nextAlert = _alertQueue[0];
     int timeToWaitForThisTraffic = 0;
-    final String lastTrafficAlertTimeKey = "${nextAlert._traffic?.message.callSign}:${nextAlert._traffic?.message.icao}";
-    final int? lastTrafficAlertTimeValue = _lastTrafficAlertTimeMap[lastTrafficAlertTimeKey];
+    final String trafficKey = "${nextAlert._traffic?.message.callSign}:${nextAlert._traffic?.message.icao}";
+    final int? lastTrafficAlertTimeValue = _lastTrafficAlertTimeMap[trafficKey];
     //TODO: Also put minimum separate (timeToWaitForAny) for all alerts
     //TODO: Cede place in line to "next one" if available (e.g., move this one to back and call this again)
     if (lastTrafficAlertTimeValue == null
       || (timeToWaitForThisTraffic = (_tempPrefMaxAlertFrequencySeconds * 1000) - (DateTime.now().millisecondsSinceEpoch - lastTrafficAlertTimeValue)) <= 0
     ) {
-      _lastTrafficAlertTimeMap[lastTrafficAlertTimeKey] = DateTime.now().millisecondsSinceEpoch;
-      _log("processing alerts ${nextAlert._traffic?.message.icao} of list size (now) ${_alertQueue.length} as time to wait is ${timeToWaitForThisTraffic} and last val was ${lastTrafficAlertTimeValue}");
+      _lastTrafficAlertTimeMap[trafficKey] = DateTime.now().millisecondsSinceEpoch;
+      _log("====================================== processing alerts ${trafficKey} of list size (now) ${_alertQueue.length} as time to wait is ${timeToWaitForThisTraffic} and last val was ${lastTrafficAlertTimeValue}");
       _alertQueue.removeAt(0);
-    } else {
-      _log("waiting to alert for ${lastTrafficAlertTimeKey} for ${timeToWaitForThisTraffic}ms");
+    } else if (timeToWaitForThisTraffic > 0) {
+      _log("waiting to alert for ${trafficKey} for ${timeToWaitForThisTraffic}ms");
       Future.delayed(Duration(milliseconds: timeToWaitForThisTraffic), runAudibleAlertsQueueProcessing);
     }
   }

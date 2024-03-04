@@ -91,16 +91,23 @@ double closestApproachTime(final double lat1, final double lon1, final double la
   return - ((a*b + c*d) / (b*b + d*d));
 }
 
-List<double> locationAfterTime(final double lat, final double lon, final double heading, final double velocityInKt, 
+Position locationAfterTime(final double lat, final double lon, final double heading, final double velocityInKt, 
   final double timeInHrs, final double altInFeet, final double vspeedInFpm) 
 {
     final double newLat =  lat + cos(radians(heading)) * (velocityInKt/60.00000) * timeInHrs;
-    return [
-      newLat,
-      lon + sin(radians(heading))
+    return Position (
+      latitude: newLat,
+      longitude: lon + sin(radians(heading))
               // Again, use cos of average lat to give some weighting based on shorter intra-lon distance changes at higher latitudes
               * (velocityInKt / (60.00000*cos(radians((newLat+lat)/2.0000))))
               * timeInHrs,
-      altInFeet + (vspeedInFpm * (60.0 * timeInHrs))
-    ];
+      altitude: altInFeet + (vspeedInFpm * (60.0 * timeInHrs)),
+      altitudeAccuracy: 0,
+      heading: heading,
+      headingAccuracy: 0,
+      speed: velocityInKt,
+      speedAccuracy: 0,
+      accuracy: 0,
+      timestamp: DateTime.now()
+    );
 }

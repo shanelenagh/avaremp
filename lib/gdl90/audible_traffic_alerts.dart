@@ -48,14 +48,23 @@ class AudibleTrafficAlerts {
   bool _tempPrefTopGunDorkMode = false;
   int _tempPrefAudibleTrafficAlertsMinSpeed = 10;
   int _tempPrefAudibleTrafficAlertsDistanceMinimum = 5;
-  bool _tempPrefIsAudibleClosingInAlerts = true;
   double _tempPrefTrafficAlertsHeight = 5000;
   int _tempPrefMaxAlertFrequencySeconds = 15;
+
+  bool _tempPrefIsAudibleClosingInAlerts = true;
+  double _tempClosingAlertAltitude = 1000;
+  double _tempClosingTimeThresholdSeconds = 60;
+  double _tempClosestApproachThresholdNmi = 1;
+  double _tempCriticalClosingAlertRatio = 0.5;
+
   TrafficIdOption _tempTrafficIdOption = TrafficIdOption.PHONETIC_ALPHA_ID;
   
 
   bool _isRunning = false;
   bool _isPlaying = false;
+
+  static final double kMpsToKnotsConv = 1.0/0.514444;
+  static final double kMetersToFeetCont = 3.28084;
 
 
   static Future<AudibleTrafficAlerts?> getAndStartAudibleTrafficAlerts(double playRate) async {
@@ -129,7 +138,7 @@ class AudibleTrafficAlerts {
     return Future.wait(futures); 
   }
 
-  void processTrafficForAudibleAlerts(List<Traffic?> trafficList, Position? ownshipLocation, DateTime? ownshipUpdateTime) {
+  void processTrafficForAudibleAlerts(List<Traffic?> trafficList, Position? ownshipLocation, DateTime? ownshipUpdateTime, double ownVspeed) {
     if (!_isRunning || ownshipLocation == null) {
       return;
     }
@@ -154,7 +163,11 @@ class AudibleTrafficAlerts {
       ) {
         _log("!!!!!!!!!!!!!!!!!!!!!!!!!! putting one in, woot: ${trafficKey} having value ${lastTrafficPositionUpdateValue} vs. calced ${trafficPositionTimeCalcUpdateValue} altdiff=${altDiff} and dist=${curDistance} of time ${traffic.message.time}");
         hasInserts = hasInserts || _upsertTrafficAlertQueue(
-          _AlertItem(traffic, ownshipLocation, ownshipLocation.altitude/*TODO*/, null /*TODO*/, curDistance)
+          _AlertItem(traffic, ownshipLocation, ownshipLocation.altitude, 
+            _tempPrefIsAudibleClosingInAlerts  
+              ? _determineClosingEvent(ownshipLocation, traffic, curDistance, ownVspeed)
+              : null
+            , curDistance)
         );
         _lastTrafficPositionUpdateTimeMap[trafficKey] = trafficPositionTimeCalcUpdateValue;
       } //TODO: ELSE --> REMOVE stuff from queue that is no longer eligible on this iteration
@@ -176,6 +189,43 @@ class AudibleTrafficAlerts {
     }
     return false;
   }
+
+  _ClosingEvent? _determineClosingEvent(Position ownLocation, Traffic traffic, double currentDistance, double ownVspeed)
+  {
+      final int ownSpeedInKts = (kMpsToKnotsConv * ownLocation.speed).round();
+      final double ownAltInFeet = kMetersToFeetCont * ownLocation.altitude;
+      final double closingEventTimeSec = (closestApproachTime(
+              traffic.message.coordinates.latitude, traffic.message.coordinates.longitude, 
+              ownLocation.latitude, ownLocation.longitude, traffic.message.heading, ownLocation.heading, 
+              traffic.message.velocity.round(), ownSpeedInKts
+      )).abs() * 60.00 * 60.00;
+      _log("Closintg seconds is ${closingEventTimeSec}");
+      if (closingEventTimeSec < _tempClosingTimeThresholdSeconds) {    // Gate #1: Time threshold met
+          final Position myCaLoc = locationAfterTime(ownLocation.latitude, ownLocation.longitude,
+                  ownLocation.heading, ownSpeedInKts*1.0, closingEventTimeSec/3600.000, ownAltInFeet, ownVspeed);
+          final Position theirCaLoc = locationAfterTime(traffic.message.coordinates.latitude, traffic.message.coordinates.longitude,
+            traffic.message.heading, traffic.message.velocity, closingEventTimeSec/3600.000, traffic.message.altitude, 
+            traffic.message.verticalSpeed);
+          double? caDistance;
+          final double altDiff = myCaLoc.altitude - theirCaLoc.altitude;
+          _log("Closing altdiff=${altDiff} for ownVspeed=${ownVspeed} and their vspeed=${traffic.message.verticalSpeed}");
+          _log("Closing myalt=${ownLocation.altitude}, theiralt=${traffic.message.altitude} and time in hours later is ${closingEventTimeSec/3600.000}");
+          // Gate #2: If traffic will be within configured "cylinder" of closing/TCPA alerts, create a closing event
+          if (altDiff.abs() < _tempClosingAlertAltitude
+                  && (
+                    caDistance = greatCircleDistanceNmi(myCaLoc.latitude, myCaLoc.longitude, theirCaLoc.latitude, theirCaLoc.longitude)
+                  ) < _tempClosestApproachThresholdNmi
+                  && currentDistance > caDistance)    // catches cases when moving away
+          {
+              final bool criticallyClose = _tempCriticalClosingAlertRatio > 0
+                      && (closingEventTimeSec / _tempClosingTimeThresholdSeconds) <= _tempCriticalClosingAlertRatio
+                      && (caDistance / _tempClosestApproachThresholdNmi) <= _tempCriticalClosingAlertRatio;
+              return _ClosingEvent(closingEventTimeSec, caDistance, criticallyClose);
+          } 
+          _log("Closing caDistance=${caDistance??-1} and curDistance=$currentDistance");
+      }
+      return null;
+  }  
 
   void runAudibleAlertsQueueProcessing() {
     if (!_isRunning || _isPlaying || _alertQueue.isEmpty) {
@@ -215,8 +265,8 @@ class AudibleTrafficAlerts {
    */
   List<AudioPlayer> _buildAlertSoundIdSequence(final _AlertItem alert) {
       final List<AudioPlayer> alertAudio = [];
-      // if (alert.closingEvent != null && alert.closingEvent.isCriticallyClose)
-      //     alertAudio.add(criticallyCloseChirpSoundId);
+      if (alert._closingEvent != null && alert._closingEvent._isCriticallyClose)
+          alertAudio.add(_criticallyCloseChirpAudio);
       alertAudio.add(_tempPrefTopGunDorkMode ? _bogeyAudio : _trafficAudio);
       switch (_tempTrafficIdOption) {
           case TrafficIdOption.PHONETIC_ALPHA_ID:
@@ -225,10 +275,9 @@ class AudibleTrafficAlerts {
           case TrafficIdOption.FULL_CALLSIGN:
               _addFullCallsignTrafficIdAudio(alertAudio, alert._traffic?.message.callSign);
       }
-      // if (alert.closingEvent != null) {
-      //     addTimeToClosestPointOfApproachAudio(alertAudio, alert.closingEvent, speakingRate);
-      // }
-
+      if (alert._closingEvent != null) {
+          _addTimeToClosestPointOfApproachAudio(alertAudio, alert._closingEvent);
+      }
 
       final int clockHour = nearestClockHourFromHeadingAndLocations(alert._ownLocation?.latitude??0,
 										alert._ownLocation?.longitude??0, alert._traffic?.message.coordinates.latitude??0, 
@@ -292,104 +341,112 @@ class AudibleTrafficAlerts {
       alertAudio.add(_milesAudio);
   }  
 
+  /**
+   * Inject an individual digit audio alert sound sequence (1,032 ==> "one-zero-three-two")
+   * @param alertAudio Existing audio list to add numeric value to
+   * @param numeric Numeric value to speak into alert audio
+   * @param doDecimal Whether to speak 1st decimal into alert (false ==> rounded to whole #)
+   */
+  void _addNumericalAlertAudio(List<AudioPlayer> alertAudio, double numeric, bool doDecimal) {
+      if (_tempNumberFormatOption == NumberFormatOption.COLLOQUIAL) {
+          _addColloquialNumericBaseAlertAudio(alertAudio, doDecimal ? numeric : numeric.round() * 1.0);
+      } else {
+          _addNumberSequenceNumericBaseAlertAudio(alertAudio, doDecimal ? numeric : numeric.round() * 1.0);
+      }
 
+      if (doDecimal) {
+          _addFirstDecimalAlertAudioSequence(alertAudio, numeric);
+      }
+  }
 
+  /**
+   * Speak a number in digit-by-digit format (1962 ==> "one nine six two")
+   * @param alertAudio List of soundId to append to
+   * @param numeric Numeric value to speak into alertAudio
+   */
+  void _addNumberSequenceNumericBaseAlertAudio(List<AudioPlayer> alertAudio, double numeric) {
+      double curNumeric = numeric;    // iteration variable for digit processing
+      for (int i = max(numerics.log10(numeric).floor(), 0); i >= 0; i--) {
+          if (i == 0) {
+              alertAudio.add(_numberAudios[min((curNumeric % 10).floor(), 9)]);
+          } else {
+              final double pow10 = pow(10, i) as double;
+              alertAudio.add(_numberAudios[min(curNumeric / pow10, 9).floor()]);
+              curNumeric = curNumeric % pow10;
+          }
+      }
+  }
 
+  /**
+   * Speak a number in colloquial format (1962 ==> "one thousand nine hundred sixty-two")
+   * @param alertAudio List of soundId to append to
+   * @param numeric Numeric value to speak into alertAudio
+   */
+  void _addColloquialNumericBaseAlertAudio(List<AudioPlayer> alertAudio, double numeric) {
+      for (int i = max(numerics.log10(numeric).round(), 0); i >= 0; i--) {
+          if (i == 0
+              // Only speak "zero" if it is only zero (not part of tens/hundreds/thousands)
+              && ((numeric % 10) != 0 || (max(numerics.log10(numeric), 0)) == 0))
+          {
+              alertAudio.add(_numberAudios[min(numeric % 10, 9).floor()]);
+          } else {
+              if (i > 3) {
+                  alertAudio.add(_overAudio);
+                  alertAudio.addAll([ _numberAudios[9], _thousandAudio, _numberAudios[9], _hundredAudio, 
+                    _twentiesToNinetiesAudios[9 - 2], _numberAudios[9] ]);
+                  return;
+              } else {
+                  final double pow10 = pow(10, i) * 1.0;
+                  final int digit = min(numeric / pow10, 9).floor();
+                  if (i == 1 && digit == 1) {             // tens/teens
+                      alertAudio.add(_numberAudios[10 + (numeric.floor()) % 10]);
+                      return;
+                  } else {
+                      if (i == 1 && digit != 0) {         // twenties/thirties/etc.
+                          alertAudio.add(_twentiesToNinetiesAudios[digit-2]);
+                      } else if (i == 2 && digit != 0) {  // hundreds
+                          alertAudio.add(_numberAudios[digit]);
+                          alertAudio.add(_hundredAudio);
+                      } else if (i == 3 && digit != 0) {  // thousands
+                          alertAudio.add(_numberAudios[digit]);
+                          alertAudio.add(_thousandAudio);
+                      }
+                      numeric = numeric % pow10;
+                  }
+              }
+          }
+      }
+  }
 
+  void _addFirstDecimalAlertAudioSequence(List<AudioPlayer> alertAudio, double numeric) {
+      final int firstDecimal = min(((numeric - numeric.floor()) * 10).round(), 9);
+      if (firstDecimal != 0) {
+          alertAudio.add(_pointAudio);
+          alertAudio.add(_numberAudios[firstDecimal]);
+      }
+  }
 
-    /**
-     * Inject an individual digit audio alert sound sequence (1,032 ==> "one-zero-three-two")
-     * @param alertAudio Existing audio list to add numeric value to
-     * @param numeric Numeric value to speak into alert audio
-     * @param doDecimal Whether to speak 1st decimal into alert (false ==> rounded to whole #)
-     */
-    void _addNumericalAlertAudio(List<AudioPlayer> alertAudio, double numeric, bool doDecimal) {
-        if (_tempNumberFormatOption == NumberFormatOption.COLLOQUIAL) {
-            _addColloquialNumericBaseAlertAudio(alertAudio, doDecimal ? numeric : numeric.round() * 1.0);
-        } else {
-            _addNumberSequenceNumericBaseAlertAudio(alertAudio, doDecimal ? numeric : numeric.round() * 1.0);
-        }
+  void _addTimeToClosestPointOfApproachAudio(List<AudioPlayer> alertAudio, _ClosingEvent closingEvent) {
+      if (_addClosingSecondsAudio(alertAudio, closingEvent.closingSeconds())) {
+          if (_tempDistanceCalloutOption != DistanceCalloutOption.NONE) {
+              alertAudio.add(_withinAudio);
+              _addDistanceAudio(alertAudio, closingEvent._closestApproachDistanceNmi);
+          }
+      }
+  }  
 
-        if (doDecimal) {
-            _addFirstDecimalAlertAudioSequence(alertAudio, numeric);
-        }
-    }
+  bool _addClosingSecondsAudio(List<AudioPlayer> alertAudio, double closingSeconds) {
+      // Subtract speaking time of audio clips, and computation thereof, prior to # of seconds in this alert
+      final double adjustedClosingSeconds = closingSeconds - 1; // SWAG TODO: /*(soundPlayer.getPartialSoundSequenceDuration(alertAudio, speakingRate)+100)/1000.00;
+      if (adjustedClosingSeconds > 0) {
+          alertAudio.add(_closingInAudio);
+          _addNumericalAlertAudio(alertAudio, adjustedClosingSeconds, false);
+          alertAudio.add(_secondsAudio);
+          return true;
+      }
+      return false;
+  }  
 
-    /**
-     * Speak a number in digit-by-digit format (1962 ==> "one nine six two")
-     * @param alertAudio List of soundId to append to
-     * @param numeric Numeric value to speak into alertAudio
-     */
-    void _addNumberSequenceNumericBaseAlertAudio(List<AudioPlayer> alertAudio, double numeric) {
-        double curNumeric = numeric;    // iteration variable for digit processing
-        for (int i = max(numerics.log10(numeric).floor(), 0); i >= 0; i--) {
-            if (i == 0) {
-                alertAudio.add(_numberAudios[min((curNumeric % 10).floor(), 9)]);
-            } else {
-                final double pow10 = pow(10, i) as double;
-                alertAudio.add(_numberAudios[min(curNumeric / pow10, 9).floor()]);
-                curNumeric = curNumeric % pow10;
-            }
-        }
-    }
-
-    /**
-     * Speak a number in colloquial format (1962 ==> "one thousand nine hundred sixty-two")
-     * @param alertAudio List of soundId to append to
-     * @param numeric Numeric value to speak into alertAudio
-     */
-    void _addColloquialNumericBaseAlertAudio(List<AudioPlayer> alertAudio, double numeric) {
-        for (int i = max(numerics.log10(numeric).round(), 0); i >= 0; i--) {
-            if (i == 0
-                // Only speak "zero" if it is only zero (not part of tens/hundreds/thousands)
-                && ((numeric % 10) != 0 || (max(numerics.log10(numeric), 0)) == 0))
-            {
-                alertAudio.add(_numberAudios[min(numeric % 10, 9).floor()]);
-            } else {
-                if (i > 3) {
-                    alertAudio.add(_overAudio);
-                    alertAudio.addAll([ _numberAudios[9], _thousandAudio, _numberAudios[9], _hundredAudio, 
-                      _twentiesToNinetiesAudios[9 - 2], _numberAudios[9] ]);
-                    return;
-                } else {
-                    final double pow10 = pow(10, i) * 1.0;
-                    final int digit = min(numeric / pow10, 9).floor();
-                    if (i == 1 && digit == 1) {             // tens/teens
-                        alertAudio.add(_numberAudios[10 + (numeric.floor()) % 10]);
-                        return;
-                    } else {
-                        if (i == 1 && digit != 0) {         // twenties/thirties/etc.
-                            alertAudio.add(_twentiesToNinetiesAudios[digit-2]);
-                        } else if (i == 2 && digit != 0) {  // hundreds
-                            alertAudio.add(_numberAudios[digit]);
-                            alertAudio.add(_hundredAudio);
-                        } else if (i == 3 && digit != 0) {  // thousands
-                            alertAudio.add(_numberAudios[digit]);
-                            alertAudio.add(_thousandAudio);
-                        }
-                        numeric = numeric % pow10;
-                    }
-                }
-            }
-        }
-    }
-
-    void _addFirstDecimalAlertAudioSequence(List<AudioPlayer> alertAudio, double numeric) {
-        final int firstDecimal = min(((numeric - numeric.floor()) * 10).round(), 9);
-        if (firstDecimal != 0) {
-            alertAudio.add(_pointAudio);
-            alertAudio.add(_numberAudios[firstDecimal]);
-        }
-    }
-
-
-
-
-
-
-
-
-  
   String _getTrafficKey(Traffic? traffic) {
     return "${traffic?.message.callSign}:${traffic?.message.icao}";
   }

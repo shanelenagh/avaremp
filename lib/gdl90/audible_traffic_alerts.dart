@@ -42,7 +42,6 @@ class AudibleTrafficAlerts {
   double _tempPrefTrafficAlertsHeight = 2000;
   int _tempPrefMaxAlertFrequencySeconds = 10;
 
-
   bool _isRunning = false;
   bool _isPlaying = false;
 
@@ -114,8 +113,7 @@ class AudibleTrafficAlerts {
   }
 
   void processTrafficForAudibleAlerts(List<Traffic?> trafficList, Position? ownshipLocation, DateTime? ownshipUpdateTime) {
-    //print("oh, handling audible alerts!!!!!!!!!");
-    if (ownshipLocation == null) {
+    if (!_isRunning || ownshipLocation == null) {
       return;
     }
 
@@ -194,11 +192,6 @@ class AudibleTrafficAlerts {
   static void _log(String msg) {
     print("${DateTime.now()}: ${msg}");
   }
-
-  Future<void> playSomeStuff() async {
-    await _AudioSequencePlayer([ 
-      _trafficAudio, _twentiesToNinetiesAudios[3], _numberAudios[4], _pointAudio, _numberAudios[8], _numberAudios[3], _numberAudios[4] ]).playAudioSequence();
-  }
 }
 
 
@@ -229,7 +222,7 @@ class _AlertItem {
     : _traffic = traffic, _ownLocation = ownLocation, _ownAltitude = ownAltitude, _closingEvent = closingEvent, _distanceNmi = distnaceNmi;
 
   @override
-  int get hashCode => _traffic?.message.callSign.hashCode ?? 0;
+  int get hashCode => _traffic?.message.icao.hashCode ?? 0;
 
   @override
   bool operator ==(Object other) {
@@ -237,10 +230,8 @@ class _AlertItem {
       && other.runtimeType == runtimeType
       && (
         other._traffic?.message.icao == _traffic?.message.icao
-        || other._traffic?.message.callSign == _traffic?.message.callSign
+        // NOT RELIABLE, AS IS OFTEN NULL OR EASILY HACKED || other._traffic?.message.callSign == _traffic?.message.callSign
       );
-      //&& other._traffic?.message.time == _traffic?.message.time;
-
   }
 }
 

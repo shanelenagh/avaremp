@@ -44,6 +44,7 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
 
 
   bool _isRunning = false;
+  bool _isPlaying = false;
 
 
   static Future<AudibleTrafficAlerts?> getAndStartAudibleTrafficAlerts(double playRate) async {
@@ -137,9 +138,6 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
           traffic.message.coordinates.latitude, traffic.message.coordinates.longitude)) < _tempPrefAudibleTrafficAlertsDistanceMinimum
       ) {
         _log("!!!!!!!!!!!!!!!!!!!!!!!!!! putting one in, woot: ${trafficKey} having value ${lastTrafficPositionUpdateValue} vs. calced ${trafficPositionTimeCalcUpdateValue} altdiff=${altDiff} and dist=${curDistance} of time ${traffic.message.time}");
-        //final int lastTrafficAlertTimeValue = _lastTrafficAlertTimeMap[lastTrafficPositionUpdateKey]??0;
-        //hasUpdates = hasUpdates || 
-        //  ((_tempPrefMaxAlertFrequencySeconds * 1000) - (DateTime.now().millisecondsSinceEpoch - lastTrafficAlertTimeValue) <= 0);
         hasInserts = hasInserts || _upsertTrafficAlertQueue(
           _AlertItem(traffic, ownshipLocation, ownshipLocation.altitude.round()/*TODO*/, null /*TODO*/, curDistance)
         );
@@ -148,8 +146,7 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
       } 
     }  //TODO: ELSE --> REMOVE stuff from queue that is no longer eligible on this iteration
 
-    // _AlertItem i = _AlertItem(traffic[0], ownshipLocation, 100, null, 10);
-    // _alertQueue.add(i);\
+
     if (hasInserts)
       scheduleMicrotask(runAudibleAlertsQueueProcessing);
   }
@@ -168,13 +165,9 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
   }
 
   void runAudibleAlertsQueueProcessing() {
-    if (!_isRunning) {
+    if (!_isRunning || _isPlaying || _alertQueue.isEmpty) {
       return;
     }
-    if (_alertQueue.isEmpty) {
-      return;
-    }
-  //final String lastTrafficPositionUpdateKey = "${traffic.message.callSign}:${traffic.message.icao}"; 
     _AlertItem nextAlert = _alertQueue[0];
     int timeToWaitForThisTraffic = 0;
     final String trafficKey = "${nextAlert._traffic?.message.callSign}:${nextAlert._traffic?.message.icao}";
@@ -186,6 +179,8 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
     ) {
       _lastTrafficAlertTimeMap[trafficKey] = DateTime.now().millisecondsSinceEpoch;
       _log("====================================== processing alerts ${trafficKey} of list size (now) ${_alertQueue.length} as time to wait is ${timeToWaitForThisTraffic} and last val was ${lastTrafficAlertTimeValue}");
+      _isPlaying = true;
+      _AudioSequencePlayer([ _trafficAudio], this).playAudioSequence();
       _alertQueue.removeAt(0);
     } else if (timeToWaitForThisTraffic > 0) {
       _log("waiting to alert for ${trafficKey} for ${timeToWaitForThisTraffic}ms");
@@ -206,6 +201,9 @@ class AudibleTrafficAlerts implements PlayAudioSequenceCompletionListner {
   void sequencePlayCompletion() {
     // TODO: implement sequencePlayCompletion
     _log("Finished playing sequence, per listener callback");
+    _isPlaying = false;
+    if (_alertQueue.isNotEmpty)
+      scheduleMicrotask(runAudibleAlertsQueueProcessing);
   }
 }
 

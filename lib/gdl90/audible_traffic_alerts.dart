@@ -12,10 +12,12 @@ enum TrafficIdOption { PHONETIC_ALPHA_ID, FULL_CALLSIGN, NONE }
 enum DistanceCalloutOption { NONE, ROUNDED, DECIMAL }
 enum NumberFormatOption { COLLOQUIAL, INDIVIDUAL_DIGIT }
 
-const int _kMaxIntValue = 9999999999;
-
 
 class AudibleTrafficAlerts {
+
+  static const double _kMpsToKnotsConv = 1.0/0.514444;
+  static const double _kMetersToFeetCont = 3.28084;
+  static const int _kMaxIntValue = 9999999999;
 
   static AudibleTrafficAlerts? _instance;
   static final Logger _log = Logger('AudibleTrafficAlerts');
@@ -64,24 +66,18 @@ class AudibleTrafficAlerts {
   double prefClosestApproachThresholdNmi = 1;
   double prefCriticalClosingAlertRatio = 0.5;
 
-  
-  
-
   bool _isRunning = false;
   bool _isPlaying = false;
-
-  static const double _kMpsToKnotsConv = 1.0/0.514444;
-  static const double _kMetersToFeetCont = 3.28084;
 
 
   static Future<AudibleTrafficAlerts?> getAndStartAudibleTrafficAlerts(double playRate) async {
     if (_instance == null) {
-      Logger.root.level = Level.FINER;
+      Logger.root.level = Level.INFO;
       Logger.root.onRecord.listen((record) {
         print('${record.time} ${record.level.name} [${record.loggerName}] - ${record.message}');
       });      
       _instance = AudibleTrafficAlerts._privateConstructor();
-      _log.info("Started audible traffic alerts");
+      _log.info("Started audible traffic alerts. Settings: playRate=$playRate");
       await _instance?._loadAudio(playRate);
     }
     _instance?._isRunning = true;
@@ -188,7 +184,7 @@ class AudibleTrafficAlerts {
           _log.fine("Got alert hit for [$trafficKey], with alt diff=$altDiff and distance=$curDistance");
         }        
         hasInserts = hasInserts || _upsertTrafficAlertQueue(
-          _AlertItem(traffic, ownshipLocation, ownshipLocation.altitude, 
+          _AlertItem(traffic, ownshipLocation, 
             prefIsAudibleClosingInAlerts  
               ? _determineClosingEvent(ownshipLocation, traffic, curDistance, ownVspeed)
               : null
@@ -524,12 +520,11 @@ class _AlertItem {
   final Traffic? _traffic;
   final Position? _ownLocation;
   final double _distanceNmi;
-  final double _ownAltitude;
   final double _altDiff;
   final _ClosingEvent? _closingEvent;
 
-  _AlertItem(Traffic? traffic, Position? ownLocation, double ownAltitude, _ClosingEvent? closingEvent, double distnaceNmi, double altDiff) 
-    : _traffic = traffic, _ownLocation = ownLocation, _ownAltitude = ownAltitude, _closingEvent = closingEvent, _distanceNmi = distnaceNmi, _altDiff = altDiff;
+  _AlertItem(Traffic? traffic, Position? ownLocation, _ClosingEvent? closingEvent, double distnaceNmi, double altDiff) 
+    : _traffic = traffic, _ownLocation = ownLocation, _closingEvent = closingEvent, _distanceNmi = distnaceNmi, _altDiff = altDiff;
 
   @override
   int get hashCode => _traffic?.message.icao.hashCode ?? 0;

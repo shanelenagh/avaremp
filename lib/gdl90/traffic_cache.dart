@@ -33,7 +33,6 @@ class TrafficCache {
   final List<Traffic?> _traffic = List.filled(maxEntries + 1, null); // +1 is the empty slot where new traffic is added
   
   Position? _ownshipLocation;
-  double _ownshipVspeed = 0;
   Position? get ownshipLocation { return _ownshipLocation; }
   set ownshipLocation(Position? p) {
     _ownshipLocation = p;
@@ -43,8 +42,9 @@ class TrafficCache {
   }
   DateTime? _ownshipUpdateTime;
   DateTime? get ownshipUpdateTime { return _ownshipUpdateTime; }
-  double get ownshipVspeed { return _ownshipVspeed; }
-  set ownshipVspeed(double vspeed) { _ownshipVspeed = vspeed; }
+  double ownshipVspeed = 0;
+  int ownshipIcao = -1;
+  bool ownshipIsAirborne = true;
 
   double findDistance(LatLng coordinate, double altitude) {
     // find 3d distance between current position and airplane
@@ -124,7 +124,7 @@ class TrafficCache {
 
   void handleAudibleAlerts() {
     AudibleTrafficAlerts.getAndStartAudibleTrafficAlerts(1.5).then((value) => {
-      value?.processTrafficForAudibleAlerts(_traffic, _ownshipLocation, _ownshipUpdateTime, _ownshipVspeed)
+      value?.processTrafficForAudibleAlerts(_traffic, _ownshipLocation, _ownshipUpdateTime, ownshipVspeed, ownshipIcao, ownshipIsAirborne)
     });
   }
 

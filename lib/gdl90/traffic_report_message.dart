@@ -12,6 +12,7 @@ class TrafficReportMessage extends Message {
   double verticalSpeed = 0;
   double heading = 0;
   String callSign = "";
+  bool isAirborne = false;
 
   TrafficReportMessage(super.type);
 
@@ -34,6 +35,8 @@ class TrafficReportMessage extends Message {
       }
     }
     altitude = alt.toDouble();
+
+    isAirborne = (message[11] & 0x08) != 0;
 
     upper = ((message[13].toInt() & 0xFF)) << 4;
     lower = ((message[14].toInt() & 0xF0)) >> 4;

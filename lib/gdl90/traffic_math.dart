@@ -7,28 +7,10 @@ import 'package:geolocator/geolocator.dart';
 
 const double _kMetersPerNauticalMile = 1852.000;
 
-// double _angleFromCoordinate(final double lat1, final double long1, final double lat2, final double long2) 
-// {
-//   final double lat1Rad = radians(lat1);
-//   final double long1Rad = radians(long1);
-//   final double lat2Rad = radians(lat2);
-//   final double long2Rad = radians(long2);
-
-//   final double dLon = (long2Rad - long1Rad);
-
-//   final double y = sin(dLon) * cos(lat2Rad);
-//   final double x = cos(lat1Rad) * sin(lat2Rad) - sin(lat1Rad)
-//           * cos(lat2Rad) * cos(dLon);
-
-//   final double bearingRad = atan2(y, x);
-
-//   return  (degrees(bearingRad) + 360) % 360;
-// }
-
 double _relativeBearingFromHeadingAndLocations(final double lat1, final double long1,
                             final double lat2, final double long2,  final double myBearing)
 {
-  return (/*_angleFromCoordinate*/Geolocator.bearingBetween(lat1, long1, lat2, long2) - myBearing + 360) % 360;
+  return (Geolocator.bearingBetween(lat1, long1, lat2, long2) - myBearing + 360) % 360;
 }
 
 int nearestClockHourFromHeadingAndLocations(
@@ -48,22 +30,6 @@ int nearestClockHourFromHeadingAndLocations(
  */
 double greatCircleDistanceNmi(final double lat1, final double lon1, final double lat2, final double lon2) 
 {
-  // final double x1 = radians(lat1);
-  // final double y1 = radians(lon1);
-  // final double x2 = radians(lat2);
-  // final double y2 = radians(lon2);
-
-  // /*
-  //   * Compute using Haversine formula
-  //   */
-  // final double a = pow(sin((x2-x1)/2), 2)
-  //         + cos(x1) * cos(x2) * pow(sin((y2-y1)/2), 2);
-
-  // // great circle distance in radians
-  // final double angle2 = 2.0 * asin(min(1, sqrt(a)));
-
-  // // convert back to degrees, and each degree on a great circle of Earth is 60 nautical miles
-  // return 60.0 * degrees(angle2);
   return Geolocator.distanceBetween(lat1, lon1, lat2, lon2) / _kMetersPerNauticalMile;
 }
 

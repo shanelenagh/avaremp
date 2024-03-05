@@ -6,14 +6,19 @@ import 'package:geolocator/geolocator.dart';
 import 'traffic_math.dart';
 import 'dart:math';
 import 'package:dart_numerics/dart_numerics.dart' as numerics;
+import 'package:logging/logging.dart';
 
-enum TrafficIdOption { PHONETIC_ALPHA_ID, FULL_CALLSIGN }
+enum TrafficIdOption { PHONETIC_ALPHA_ID, FULL_CALLSIGN, NONE }
 enum DistanceCalloutOption { NONE, ROUNDED, DECIMAL }
 enum NumberFormatOption { COLLOQUIAL, INDIVIDUAL_DIGIT }
+
+const int _kMaxIntValue = 9999999999;
+
 
 class AudibleTrafficAlerts {
 
   static AudibleTrafficAlerts? _instance;
+  static final Logger _log = Logger('AudibleTrafficAlerts');
 
   final AudioCache _audioCache;
 
@@ -41,36 +46,42 @@ class AudibleTrafficAlerts {
   final Map<String,int> _lastTrafficAlertTimeMap;
   final List<String> _phoneticAlphaIcaoSequenceQueue;
 
-  bool _tempPrefIsAudibleGroundAlertsEnabled = false;
-  bool _tempVerticalAttitudeCallout = true;
-  DistanceCalloutOption _tempDistanceCalloutOption = DistanceCalloutOption.DECIMAL;
-  NumberFormatOption _tempNumberFormatOption = NumberFormatOption.COLLOQUIAL;
-  bool _tempPrefTopGunDorkMode = false;
-  int _tempPrefAudibleTrafficAlertsMinSpeed = 10;
-  int _tempPrefAudibleTrafficAlertsDistanceMinimum = 5;
-  double _tempPrefTrafficAlertsHeight = 5000;
-  int _tempPrefMaxAlertFrequencySeconds = 15;
-  int _tempTimeBetweenAnyAlertMs = 750;
+  bool prefIsAudibleGroundAlertsEnabled = true;
+  bool prefVerticalAttitudeCallout = false;
+  DistanceCalloutOption prefDistanceCalloutOption = DistanceCalloutOption.NONE;
+  NumberFormatOption prefNumberFormatOption = NumberFormatOption.COLLOQUIAL;
+  TrafficIdOption prefTrafficIdOption = TrafficIdOption.NONE;
+  bool prefTopGunDorkMode = false;
+  int prefAudibleTrafficAlertsMinSpeed = 0;
+  int prefAudibleTrafficAlertsDistanceMinimum = 10;
+  double prefTrafficAlertsHeight = 1000;
+  int prefMaxAlertFrequencySeconds = 15;
+  int prefTimeBetweenAnyAlertMs = 750;
 
-  bool _tempPrefIsAudibleClosingInAlerts = true;
-  double _tempClosingAlertAltitude = 1000;
-  double _tempClosingTimeThresholdSeconds = 60;
-  double _tempClosestApproachThresholdNmi = 1;
-  double _tempCriticalClosingAlertRatio = 0.5;
+  bool prefIsAudibleClosingInAlerts = true;
+  double prefClosingAlertAltitude = 1000;
+  double prefClosingTimeThresholdSeconds = 60;
+  double prefClosestApproachThresholdNmi = 1;
+  double prefCriticalClosingAlertRatio = 0.5;
 
-  TrafficIdOption _tempTrafficIdOption = TrafficIdOption.PHONETIC_ALPHA_ID;
+  
   
 
   bool _isRunning = false;
   bool _isPlaying = false;
 
-  static final double kMpsToKnotsConv = 1.0/0.514444;
-  static final double kMetersToFeetCont = 3.28084;
+  static const double _kMpsToKnotsConv = 1.0/0.514444;
+  static const double _kMetersToFeetCont = 3.28084;
 
 
   static Future<AudibleTrafficAlerts?> getAndStartAudibleTrafficAlerts(double playRate) async {
     if (_instance == null) {
+      Logger.root.level = Level.FINER;
+      Logger.root.onRecord.listen((record) {
+        print('${record.time} ${record.level.name} [${record.loggerName}] - ${record.message}');
+      });      
       _instance = AudibleTrafficAlerts._privateConstructor();
+      _log.info("Started audible traffic alerts");
       await _instance?._loadAudio(playRate);
     }
     _instance?._isRunning = true;
@@ -79,13 +90,14 @@ class AudibleTrafficAlerts {
 
   static Future<void> stopAudibleTrafficAlerts() async {
     _instance?._isRunning = false;
+    _log.info("Stopped audible traffic alerts");
     await _instance?._destroy();
     _instance = null;
   }
 
   AudibleTrafficAlerts._privateConstructor()
     : _alertQueue = [], _lastTrafficPositionUpdateTimeMap = {}, _lastTrafficAlertTimeMap = {}, _phoneticAlphaIcaoSequenceQueue = [],
-    _audioCache = AudioCache(prefix: "assets/audio/traffic_alerts/"), 
+    _audioCache = AudioCache(prefix: "assets/audio/traffic_alerts/"),
     _trafficAudio = AudioPlayer(), _bogeyAudio = AudioPlayer(), _closingInAudio = AudioPlayer(), _overAudio = AudioPlayer(), 
     _lowAudio = AudioPlayer(), _highAudio = AudioPlayer(), _sameAltitudeAudio = AudioPlayer(), _oClockAudio = AudioPlayer(), 
     _twentiesToNinetiesAudios = [], _hundredAudio = AudioPlayer(), _thousandAudio = AudioPlayer(), _atAudio = AudioPlayer(), 
@@ -139,49 +151,63 @@ class AudibleTrafficAlerts {
     return Future.wait(futures); 
   }
 
-  void processTrafficForAudibleAlerts(List<Traffic?> trafficList, Position? ownshipLocation, DateTime? ownshipUpdateTime, double ownVspeed) {
-    if (!_isRunning || ownshipLocation == null) {
+  void processTrafficForAudibleAlerts(List<Traffic?> trafficList, Position? ownshipLocation, DateTime? ownshipUpdateTime, 
+    double ownVspeed, int ownIcao, bool ownIsAirborne) 
+  {
+    if (!_isRunning || ownshipLocation == null || (ownshipLocation.speed*_kMpsToKnotsConv < prefAudibleTrafficAlertsMinSpeed) 
+      || !(ownIsAirborne || prefIsAudibleGroundAlertsEnabled)) 
+    {
+      if (_log.level <= Level.FINER) { // Preventing unnecessary string interpolcation of log message, per log level
+        _log.finer("Skipping alerts processing due to top-level precondition (e.g., ownship location [$ownshipLocation] or airborne [$ownIsAirborne] filter , ownship speed [${ownshipLocation?.speed??0*_kMpsToKnotsConv}] filter, etc.)");
+      }
       return;
     }
 
     bool hasInserts = false;
     for (final traffic in trafficList) {
-      if (traffic == null) {
+      if (traffic == null || traffic.message.icao == ownIcao || !(traffic.message.isAirborne || prefIsAudibleGroundAlertsEnabled)) {      
+        if (_log.level <= Level.FINER) { // Preventing unnecessary string interpolcation of log message, per log level
+          _log.finer("Skipping this traffic [${_getTrafficKey(traffic)}] processing due to precondition (e.g., ownship icao [$ownIcao], traffic airborne [${traffic?.message.isAirborne}] filter, etc.)");
+        }        
         continue;
       }
-      //TODO: Add ICAO/code setting and check to ensure traffic doesn't match it (e.g., Susan C's ghost ownship alerts: final String ownTailNumber = 
-      //TODO: Add airborne flag for traffic message and check this: if (!(traffic.message.isAirborne || _tempPrefIsAudibleGroundAlertsEnabled)) { continue; }
-      //TODO: Add low speed filter (for takeoff/landing)
-      final double altDiff = ownshipLocation.altitude - traffic.message.altitude;
+      final double altDiff = _kMetersToFeetCont * ownshipLocation.altitude - traffic.message.altitude;
 			final String trafficPositionTimeCalcUpdateValue = "${traffic.message.time.millisecondsSinceEpoch}_${ownshipUpdateTime?.millisecondsSinceEpoch}";
 			final String trafficKey = _getTrafficKey(traffic);  
       final String? lastTrafficPositionUpdateValue = _lastTrafficPositionUpdateTimeMap[trafficKey];
-      final double curDistance;
+      double curDistance = _kMaxIntValue*1.0;
+      if (_log.level <= Level.FINER) { // Preventing unnecessary string interpolcation of log message, per log level
+        _log.finer("Processing [$trafficKey], which has previous update times of $lastTrafficPositionUpdateValue");
+      }       
       if ((lastTrafficPositionUpdateValue == null || lastTrafficPositionUpdateValue != trafficPositionTimeCalcUpdateValue)
-        && altDiff.abs() < _tempPrefTrafficAlertsHeight
+        && altDiff.abs() < prefTrafficAlertsHeight
         && (curDistance = greatCircleDistanceNmi(ownshipLocation.latitude, ownshipLocation.longitude,
-          traffic.message.coordinates.latitude, traffic.message.coordinates.longitude)) < _tempPrefAudibleTrafficAlertsDistanceMinimum
+          traffic.message.coordinates.latitude, traffic.message.coordinates.longitude)) < prefAudibleTrafficAlertsDistanceMinimum
       ) {
-        _log("!!!!!!!!!!!!!!!!!!!!!!!!!! putting one in, woot: ${trafficKey} having value ${lastTrafficPositionUpdateValue} vs. calced ${trafficPositionTimeCalcUpdateValue} altdiff=${altDiff} and dist=${curDistance} of time ${traffic.message.time}");
+        if (_log.level <= Level.FINE) { // Preventing unnecessary string interpolcation of log message, per log level
+          _log.fine("Got alert hit for [$trafficKey], with alt diff=$altDiff and distance=$curDistance");
+        }        
         hasInserts = hasInserts || _upsertTrafficAlertQueue(
           _AlertItem(traffic, ownshipLocation, ownshipLocation.altitude, 
-            _tempPrefIsAudibleClosingInAlerts  
+            prefIsAudibleClosingInAlerts  
               ? _determineClosingEvent(ownshipLocation, traffic, curDistance, ownVspeed)
               : null
-            , curDistance)
+            , curDistance, altDiff)
         );
-        _lastTrafficPositionUpdateTimeMap[trafficKey] = trafficPositionTimeCalcUpdateValue;
-      } //TODO: ELSE --> REMOVE stuff from queue that is no longer eligible on this iteration
+      } else if (_log.level <= Level.FINER) {
+        _log.finer("Traffic [$trafficKey] didn't make the cut, with alt diff=$altDiff and distance=$curDistance");
+      }
+      _lastTrafficPositionUpdateTimeMap[trafficKey] = trafficPositionTimeCalcUpdateValue;
     }  
 
-    if (hasInserts)
+    if (hasInserts) {
       scheduleMicrotask(runAudibleAlertsQueueProcessing);
+    }
   }
 
   bool _upsertTrafficAlertQueue(_AlertItem alert) {
     final int existingIndex = _alertQueue.indexOf(alert);
     if (existingIndex == -1) {
-      _log("inserting list: ${alert._traffic?.message.icao} and list currently size: ${_alertQueue.length}");
       // If this is a "critically close" alert, put it ahead of the first non-critically close alert
       final int alertQueueSize;
       if (alert._closingEvent != null && alert._closingEvent._isCriticallyClose && (alertQueueSize = _alertQueue.length) > 0) {
@@ -197,45 +223,40 @@ class AudibleTrafficAlerts {
       }
       return true;
     } else {
-      _log("UPDATING LIST: ${alert._traffic?.message.icao} and list currently size: ${_alertQueue.length}");
       _alertQueue[existingIndex] = alert;
     }
     return false;
   }
 
-  _ClosingEvent? _determineClosingEvent(Position ownLocation, Traffic traffic, double currentDistance, double ownVspeed)
+  _ClosingEvent? _determineClosingEvent(Position ownshipLocation, Traffic traffic, double currentDistance, double ownVspeed)
   {
-      final int ownSpeedInKts = (kMpsToKnotsConv * ownLocation.speed).round();
-      final double ownAltInFeet = kMetersToFeetCont * ownLocation.altitude;
+      final int ownSpeedInKts = (_kMpsToKnotsConv * ownshipLocation.speed).round();
+      final double ownAltInFeet = _kMetersToFeetCont * ownshipLocation.altitude;
       final double closingEventTimeSec = (closestApproachTime(
               traffic.message.coordinates.latitude, traffic.message.coordinates.longitude, 
-              ownLocation.latitude, ownLocation.longitude, traffic.message.heading, ownLocation.heading, 
+              ownshipLocation.latitude, ownshipLocation.longitude, traffic.message.heading, ownshipLocation.heading, 
               traffic.message.velocity.round(), ownSpeedInKts
       )).abs() * 60.00 * 60.00;
-      _log("Closintg seconds is ${closingEventTimeSec}");
-      if (closingEventTimeSec < _tempClosingTimeThresholdSeconds) {    // Gate #1: Time threshold met
-          final Position myCaLoc = locationAfterTime(ownLocation.latitude, ownLocation.longitude,
-                  ownLocation.heading, ownSpeedInKts*1.0, closingEventTimeSec/3600.000, ownAltInFeet, ownVspeed);
+      if (closingEventTimeSec < prefClosingTimeThresholdSeconds) {    // Gate #1: Time threshold met
+          final Position myCaLoc = locationAfterTime(ownshipLocation.latitude, ownshipLocation.longitude,
+                  ownshipLocation.heading, ownSpeedInKts*1.0, closingEventTimeSec/3600.000, ownAltInFeet, ownVspeed);
           final Position theirCaLoc = locationAfterTime(traffic.message.coordinates.latitude, traffic.message.coordinates.longitude,
             traffic.message.heading, traffic.message.velocity, closingEventTimeSec/3600.000, traffic.message.altitude, 
             traffic.message.verticalSpeed);
           double? caDistance;
           final double altDiff = myCaLoc.altitude - theirCaLoc.altitude;
-          _log("Closing altdiff=${altDiff} for ownVspeed=${ownVspeed} and their vspeed=${traffic.message.verticalSpeed}");
-          _log("Closing myalt=${ownLocation.altitude}, theiralt=${traffic.message.altitude} and time in hours later is ${closingEventTimeSec/3600.000}");
           // Gate #2: If traffic will be within configured "cylinder" of closing/TCPA alerts, create a closing event
-          if (altDiff.abs() < _tempClosingAlertAltitude
+          if (altDiff.abs() < prefClosingAlertAltitude
                   && (
                     caDistance = greatCircleDistanceNmi(myCaLoc.latitude, myCaLoc.longitude, theirCaLoc.latitude, theirCaLoc.longitude)
-                  ) < _tempClosestApproachThresholdNmi
+                  ) < prefClosestApproachThresholdNmi
                   && currentDistance > caDistance)    // catches cases when moving away
           {
-              final bool criticallyClose = _tempCriticalClosingAlertRatio > 0
-                      && (closingEventTimeSec / _tempClosingTimeThresholdSeconds) <= _tempCriticalClosingAlertRatio
-                      && (caDistance / _tempClosestApproachThresholdNmi) <= _tempCriticalClosingAlertRatio;
+              final bool criticallyClose = prefCriticalClosingAlertRatio > 0
+                      && (closingEventTimeSec / prefClosingTimeThresholdSeconds) <= prefCriticalClosingAlertRatio
+                      && (caDistance / prefClosestApproachThresholdNmi) <= prefCriticalClosingAlertRatio;
               return _ClosingEvent(closingEventTimeSec, caDistance, criticallyClose);
           } 
-          _log("Closing caDistance=${caDistance??-1} and curDistance=$currentDistance");
       }
       return null;
   }  
@@ -244,49 +265,62 @@ class AudibleTrafficAlerts {
     if (!_isRunning || _isPlaying || _alertQueue.isEmpty) {
       return;
     }
-    final _AlertItem nextAlert = _alertQueue[0];
-    int timeToWaitForThisTraffic = 0;
-    final String trafficKey = _getTrafficKey(nextAlert._traffic);
-    final int? lastTrafficAlertTimeValue = _lastTrafficAlertTimeMap[trafficKey];
-    //TODO: Also put minimum separate (timeToWaitForAny) for all alerts
-    //TODO: Cede place in line to "next one" if available (e.g., move this one to back and call this again)
-    if (lastTrafficAlertTimeValue == null
-      || (timeToWaitForThisTraffic = (_tempPrefMaxAlertFrequencySeconds * 1000) - (DateTime.now().millisecondsSinceEpoch - lastTrafficAlertTimeValue)) <= 0
-    ) {
-      _lastTrafficAlertTimeMap[trafficKey] = DateTime.now().millisecondsSinceEpoch;
-      _log("====================================== processing alerts ${trafficKey} of list size (now) ${_alertQueue.length} as time to wait is ${timeToWaitForThisTraffic} and last val was ${lastTrafficAlertTimeValue}");
-      _isPlaying = true;
-      _alertQueue.removeAt(0);
-      _AudioSequencePlayer(_buildAlertSoundIdSequence(nextAlert)).playAudioSequence().then((value) { 
-        _log("Finished playing sequence, per listener callback");
-        _isPlaying = false;
-        if (_alertQueue.isNotEmpty) {
-          Future.delayed(Duration(milliseconds: _tempTimeBetweenAnyAlertMs), runAudibleAlertsQueueProcessing);        
+    
+    int timeToWaitForTraffic = _kMaxIntValue;
+    // Loop to allow a traffic item to cede place in line to next one if available if it can't go now
+    for (int i = 0; i < _alertQueue.length; i++) {
+      final _AlertItem nextAlert = _alertQueue[i];
+      if (_log.level <= Level.FINER) { // Preventing unnecessary string interpolcation of log message, per log level
+        _log.finer("Queue processing: looking at ${_getTrafficKey(nextAlert._traffic)} in iteration $i with queue size ${_alertQueue.length}");
+      }
+      final String trafficKey = _getTrafficKey(nextAlert._traffic);
+      final int? lastTrafficAlertTimeValue = _lastTrafficAlertTimeMap[trafficKey];
+      if (lastTrafficAlertTimeValue == null
+        || (timeToWaitForTraffic = min(timeToWaitForTraffic, (prefMaxAlertFrequencySeconds * 1000) - (DateTime.now().millisecondsSinceEpoch - lastTrafficAlertTimeValue))) <= 0
+      ) {
+        if (_log.level <= Level.FINE) { // Preventing unnecessary string interpolcation of log message, per log level
+          _log.fine("Queue processing: Saying alert for ${_getTrafficKey(nextAlert._traffic)} in iteration $i with queue size ${_alertQueue.length}");
         }
-      });
-    } else if (timeToWaitForThisTraffic > 0) {
-      _log("waiting to alert for ${trafficKey} for ${timeToWaitForThisTraffic}ms");
-      Future.delayed(Duration(milliseconds: timeToWaitForThisTraffic), runAudibleAlertsQueueProcessing);
+        _lastTrafficAlertTimeMap[trafficKey] = DateTime.now().millisecondsSinceEpoch;
+        _isPlaying = true;
+        _alertQueue.removeAt(i);
+        _AudioSequencePlayer(_buildAlertSoundSequence(nextAlert)).playAudioSequence().then((value) { 
+          _isPlaying = false;
+          if (_alertQueue.isNotEmpty) {
+            Future.delayed(Duration(milliseconds: (_alertQueue[0]._closingEvent?._isCriticallyClose ?? false) ? 0 
+              : prefTimeBetweenAnyAlertMs), runAudibleAlertsQueueProcessing);        
+          }
+        });
+        return;
+      } 
+    }
+    if (timeToWaitForTraffic != _kMaxIntValue && timeToWaitForTraffic > 0) {
+      if (_log.level <= Level.FINE) { // Preventing unnecessary string interpolcation of log message, per log level
+        _log.fine("Queue processing: Waiting for traffic for ${timeToWaitForTraffic}ms with queue size ${_alertQueue.length}");
+      }
+      Future.delayed(Duration(milliseconds: timeToWaitForTraffic), runAudibleAlertsQueueProcessing);
     }
   }
 
 
   /**
-   * Construct soundId sequence based on alert properties and preference configuration
-   * @param alert Alert item to build soundId sequence for
-   * @return Sequence of soundId's for the soundplayer that represents the assembled alert
+   * Construct sound sequence based on alert properties and preference configuration
+   * @param alert Alert item to build sound sequence for
+   * @return Sequence of sounds that represents the assembled alert
    */
-  List<AudioPlayer> _buildAlertSoundIdSequence(final _AlertItem alert) {
+  List<AudioPlayer> _buildAlertSoundSequence(final _AlertItem alert) {
       final List<AudioPlayer> alertAudio = [];
-      if (alert._closingEvent != null && alert._closingEvent._isCriticallyClose)
+      if (alert._closingEvent != null && alert._closingEvent._isCriticallyClose) {
           alertAudio.add(_criticallyCloseChirpAudio);
-      alertAudio.add(_tempPrefTopGunDorkMode ? _bogeyAudio : _trafficAudio);
-      switch (_tempTrafficIdOption) {
+      }
+      alertAudio.add(prefTopGunDorkMode ? _bogeyAudio : _trafficAudio);
+      switch (prefTrafficIdOption) {
           case TrafficIdOption.PHONETIC_ALPHA_ID:
               _addPhoneticAlphaTrafficIdAudio(alertAudio, alert);
               break;
           case TrafficIdOption.FULL_CALLSIGN:
               _addFullCallsignTrafficIdAudio(alertAudio, alert._traffic?.message.callSign);
+          default:
       }
       if (alert._closingEvent != null) {
           _addTimeToClosestPointOfApproachAudio(alertAudio, alert._closingEvent);
@@ -295,14 +329,14 @@ class AudibleTrafficAlerts {
       final int clockHour = nearestClockHourFromHeadingAndLocations(alert._ownLocation?.latitude??0,
 										alert._ownLocation?.longitude??0, alert._traffic?.message.coordinates.latitude??0, 
                     alert._traffic?.message.coordinates.longitude??0, alert._ownLocation?.heading??0);
-      _addPositionAudio(alertAudio, clockHour, alert._ownAltitude - (alert._traffic?.message.altitude??0));
+      _addPositionAudio(alertAudio, clockHour, alert._altDiff);
       
       
-      if (_tempDistanceCalloutOption != DistanceCalloutOption.NONE) {
+      if (prefDistanceCalloutOption != DistanceCalloutOption.NONE) {
           _addDistanceAudio(alertAudio, alert._distanceNmi);
       }
       
-      if (_tempVerticalAttitudeCallout /* && (alert._traffic?.message.verticalSpeed??0.0 != 0.0  Indeterminate value */) {
+      if (prefVerticalAttitudeCallout /* && (alert._traffic?.message.verticalSpeed??0.0 != 0.0  Indeterminate value */) {
           _addVerticalAttitudeAudio(alertAudio, alert._traffic?.message.verticalSpeed??0.0);
       }
       return alertAudio;
@@ -317,12 +351,13 @@ class AudibleTrafficAlerts {
   }  
 
   void _addVerticalAttitudeAudio(List<AudioPlayer> alertAudio, double vspeed) {
-      if (vspeed.abs() < 100)
+      if (vspeed.abs() < 100) {
           alertAudio.add(_levelAudio);
-      else if (vspeed >= 100)
+      } else if (vspeed >= 100) {
           alertAudio.add(_climbingAudio);
-      else if (vspeed <= -100)
+      } else if (vspeed <= -100) {
           alertAudio.add(_descendingAudio);
+      }
   }  
 
   void _addPhoneticAlphaTrafficIdAudio(List<AudioPlayer> alertAudio, _AlertItem alert) {
@@ -335,22 +370,24 @@ class AudibleTrafficAlerts {
     alertAudio.add(_alphabetAudios[icaoIndex % _alphabetAudios.length]);
   } 
 
+  static final int _nineCodeUnit = "9".codeUnitAt(0), _zeroCodeUnit = "0".codeUnitAt(0), _aCodeUnit = "A".codeUnitAt(0), _zCodeUnit = "Z".codeUnitAt(0);
   void _addFullCallsignTrafficIdAudio(List<AudioPlayer> alertAudio, String? callsign) {
     if (callsign == null || callsign.trim().isEmpty) {
       return;
     }
     final String normalizedCallsign = callsign.toUpperCase().trim();
     for (int i = 0; i < normalizedCallsign.length; i++) {
-        int c = normalizedCallsign[i].codeUnitAt(0);
-        if (c <= "9".codeUnitAt(0) && c >= "0".codeUnitAt(0))
-            alertAudio.add(_numberAudios[c-"0".codeUnitAt(0)]);
-        else if (c >= "A".codeUnitAt(0) && c <= "Z".codeUnitAt(0))
-            alertAudio.add(_alphabetAudios[c-"A".codeUnitAt(0)]);
+        final int c = normalizedCallsign[i].codeUnitAt(0);
+        if (c <= _nineCodeUnit && c >= _zeroCodeUnit) {
+            alertAudio.add(_numberAudios[c - _zeroCodeUnit]);
+        } else if (c >= _aCodeUnit && c <= _zCodeUnit) {
+            alertAudio.add(_alphabetAudios[c - _aCodeUnit]);
+        }
     }
   }  
 
   void _addDistanceAudio(List<AudioPlayer> alertAudio, double distance) {
-      _addNumericalAlertAudio(alertAudio, distance, _tempDistanceCalloutOption == DistanceCalloutOption.DECIMAL);
+      _addNumericalAlertAudio(alertAudio, distance, prefDistanceCalloutOption == DistanceCalloutOption.DECIMAL);
       alertAudio.add(_milesAudio);
   }  
 
@@ -361,7 +398,7 @@ class AudibleTrafficAlerts {
    * @param doDecimal Whether to speak 1st decimal into alert (false ==> rounded to whole #)
    */
   void _addNumericalAlertAudio(List<AudioPlayer> alertAudio, double numeric, bool doDecimal) {
-      if (_tempNumberFormatOption == NumberFormatOption.COLLOQUIAL) {
+      if (prefNumberFormatOption == NumberFormatOption.COLLOQUIAL) {
           _addColloquialNumericBaseAlertAudio(alertAudio, doDecimal ? numeric : numeric.round() * 1.0);
       } else {
           _addNumberSequenceNumericBaseAlertAudio(alertAudio, doDecimal ? numeric : numeric.round() * 1.0);
@@ -374,7 +411,7 @@ class AudibleTrafficAlerts {
 
   /**
    * Speak a number in digit-by-digit format (1962 ==> "one nine six two")
-   * @param alertAudio List of soundId to append to
+   * @param alertAudio List of sounds to append to
    * @param numeric Numeric value to speak into alertAudio
    */
   void _addNumberSequenceNumericBaseAlertAudio(List<AudioPlayer> alertAudio, double numeric) {
@@ -392,43 +429,44 @@ class AudibleTrafficAlerts {
 
   /**
    * Speak a number in colloquial format (1962 ==> "one thousand nine hundred sixty-two")
-   * @param alertAudio List of soundId to append to
+   * @param alertAudio List of sounds to append to
    * @param numeric Numeric value to speak into alertAudio
    */
   void _addColloquialNumericBaseAlertAudio(List<AudioPlayer> alertAudio, double numeric) {
-      for (int i = max(numerics.log10(numeric).round(), 0); i >= 0; i--) {
-          if (i == 0
-              // Only speak "zero" if it is only zero (not part of tens/hundreds/thousands)
-              && ((numeric % 10) != 0 || (max(numerics.log10(numeric), 0)) == 0))
-          {
-              alertAudio.add(_numberAudios[min(numeric % 10, 9).floor()]);
+    final double log10Val = numerics.log10(numeric);
+    for (int i = max(log10Val.isInfinite || log10Val.isNaN ? -1 : log10Val.round(), 0); i >= 0; i--) {
+      if (i == 0
+        // Only speak "zero" if it is only zero (not part of tens/hundreds/thousands)
+        && ((numeric % 10) != 0 || (max(numerics.log10(numeric), 0)) == 0))
+      {
+        alertAudio.add(_numberAudios[min(numeric % 10, 9).floor()]);
+      } else {
+        if (i > 3) {
+          alertAudio.add(_overAudio);
+          alertAudio.addAll([ _numberAudios[9], _thousandAudio, _numberAudios[9], _hundredAudio, 
+            _twentiesToNinetiesAudios[9 - 2], _numberAudios[9] ]);
+          return;
+        } else {
+          final double pow10 = pow(10, i) * 1.0;
+          final int digit = min(numeric / pow10, 9).floor();
+          if (i == 1 && digit == 1) {             // tens/teens
+            alertAudio.add(_numberAudios[10 + (numeric.floor()) % 10]);
+            return;
           } else {
-              if (i > 3) {
-                  alertAudio.add(_overAudio);
-                  alertAudio.addAll([ _numberAudios[9], _thousandAudio, _numberAudios[9], _hundredAudio, 
-                    _twentiesToNinetiesAudios[9 - 2], _numberAudios[9] ]);
-                  return;
-              } else {
-                  final double pow10 = pow(10, i) * 1.0;
-                  final int digit = min(numeric / pow10, 9).floor();
-                  if (i == 1 && digit == 1) {             // tens/teens
-                      alertAudio.add(_numberAudios[10 + (numeric.floor()) % 10]);
-                      return;
-                  } else {
-                      if (i == 1 && digit != 0) {         // twenties/thirties/etc.
-                          alertAudio.add(_twentiesToNinetiesAudios[digit-2]);
-                      } else if (i == 2 && digit != 0) {  // hundreds
-                          alertAudio.add(_numberAudios[digit]);
-                          alertAudio.add(_hundredAudio);
-                      } else if (i == 3 && digit != 0) {  // thousands
-                          alertAudio.add(_numberAudios[digit]);
-                          alertAudio.add(_thousandAudio);
-                      }
-                      numeric = numeric % pow10;
-                  }
-              }
+            if (i == 1 && digit != 0) {         // twenties/thirties/etc.
+              alertAudio.add(_twentiesToNinetiesAudios[digit-2]);
+            } else if (i == 2 && digit != 0) {  // hundreds
+              alertAudio.add(_numberAudios[digit]);
+              alertAudio.add(_hundredAudio);
+            } else if (i == 3 && digit != 0) {  // thousands
+              alertAudio.add(_numberAudios[digit]);
+              alertAudio.add(_thousandAudio);
+            }
+            numeric = numeric % pow10;
           }
+        }
       }
+    }
   }
 
   void _addFirstDecimalAlertAudioSequence(List<AudioPlayer> alertAudio, double numeric) {
@@ -441,7 +479,7 @@ class AudibleTrafficAlerts {
 
   void _addTimeToClosestPointOfApproachAudio(List<AudioPlayer> alertAudio, _ClosingEvent closingEvent) {
       if (_addClosingSecondsAudio(alertAudio, closingEvent.closingSeconds())) {
-          if (_tempDistanceCalloutOption != DistanceCalloutOption.NONE) {
+          if (prefDistanceCalloutOption != DistanceCalloutOption.NONE) {
               alertAudio.add(_withinAudio);
               _addDistanceAudio(alertAudio, closingEvent._closestApproachDistanceNmi);
           }
@@ -450,7 +488,7 @@ class AudibleTrafficAlerts {
 
   bool _addClosingSecondsAudio(List<AudioPlayer> alertAudio, double closingSeconds) {
       // Subtract speaking time of audio clips, and computation thereof, prior to # of seconds in this alert
-      final double adjustedClosingSeconds = closingSeconds - 1; // SWAG TODO: /*(soundPlayer.getPartialSoundSequenceDuration(alertAudio, speakingRate)+100)/1000.00;
+      final double adjustedClosingSeconds = closingSeconds - (alertAudio.length*500.0/1000.0); // SWAG ==> TODO: Put in infra and code to compute duration of audio-to-date exactly?
       if (adjustedClosingSeconds > 0) {
           alertAudio.add(_closingInAudio);
           _addNumericalAlertAudio(alertAudio, adjustedClosingSeconds, false);
@@ -460,13 +498,8 @@ class AudibleTrafficAlerts {
       return false;
   }  
 
-  String _getTrafficKey(Traffic? traffic) {
+  static String _getTrafficKey(Traffic? traffic) {
     return "${traffic?.message.callSign}:${traffic?.message.icao}";
-  }
-
-
-  static void _log(String msg) {
-    print("${DateTime.now()}: ${msg}");
   }
 }
 
@@ -492,10 +525,11 @@ class _AlertItem {
   final Position? _ownLocation;
   final double _distanceNmi;
   final double _ownAltitude;
+  final double _altDiff;
   final _ClosingEvent? _closingEvent;
 
-  _AlertItem(Traffic? traffic, Position? ownLocation, double ownAltitude, _ClosingEvent? closingEvent, double distnaceNmi) 
-    : _traffic = traffic, _ownLocation = ownLocation, _ownAltitude = ownAltitude, _closingEvent = closingEvent, _distanceNmi = distnaceNmi;
+  _AlertItem(Traffic? traffic, Position? ownLocation, double ownAltitude, _ClosingEvent? closingEvent, double distnaceNmi, double altDiff) 
+    : _traffic = traffic, _ownLocation = ownLocation, _ownAltitude = ownAltitude, _closingEvent = closingEvent, _distanceNmi = distnaceNmi, _altDiff = altDiff;
 
   @override
   int get hashCode => _traffic?.message.icao.hashCode ?? 0;
@@ -504,10 +538,7 @@ class _AlertItem {
   bool operator ==(Object other) {
     return other is _AlertItem
       && other.runtimeType == runtimeType
-      && (
-        other._traffic?.message.icao == _traffic?.message.icao
-        // NOT RELIABLE, AS IS OFTEN NULL OR EASILY HACKED || other._traffic?.message.callSign == _traffic?.message.callSign
-      );
+      && _traffic?.message.icao == other._traffic?.message.icao;
   }
 }
 

@@ -127,6 +127,7 @@ class Storage {
     _gpsStream?.onData((data) {
       _lastMsGpsSignal = DateTime.now().millisecondsSinceEpoch; // update time when GPS signal was last received
       _gpsStack.push(data);
+      trafficCache.ownshipLocation = data;  // If using internal GPS, we need accurate ownship location for alerts
     });
   }
 
@@ -160,6 +161,8 @@ class Storage {
             _gpsStack.push(p);
             trafficCache.ownshipLocation = p;
             trafficCache.ownshipVspeed = m0.verticalSpeed;
+            trafficCache.ownshipIcao = m0.icao;
+            trafficCache.ownshipIsAirborne = m0.isAirborne;
           }
           if(m != null && m.type == MessageType.trafficReport) {
             TrafficReportMessage m0 = m as TrafficReportMessage;

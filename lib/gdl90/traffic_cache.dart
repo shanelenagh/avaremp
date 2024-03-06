@@ -123,8 +123,8 @@ class TrafficCache {
   }
 
   void handleAudibleAlerts() {
-    AudibleTrafficAlerts.getAndStartAudibleTrafficAlerts(1.5).then((value) => {
-      value?.processTrafficForAudibleAlerts(_traffic, _ownshipLocation, _ownshipUpdateTime, ownshipVspeed, ownshipIcao, ownshipIsAirborne)
+    AudibleTrafficAlerts.getAndStartAudibleTrafficAlerts(1.5).then((value) {
+      value?.processTrafficForAudibleAlerts(_traffic, _ownshipLocation, _ownshipUpdateTime, ownshipVspeed, ownshipIcao, ownshipIsAirborne);
     });
   }
 

@@ -123,9 +123,12 @@ class TrafficCache {
   }
 
   void handleAudibleAlerts() {
-    AudibleTrafficAlerts.getAndStartAudibleTrafficAlerts(1.5).then((value) {
-      value?.processTrafficForAudibleAlerts(_traffic, _ownshipLocation, _ownshipUpdateTime, ownshipVspeed, ownshipIcao, ownshipIsAirborne);
-    });
+    if (Storage().settings.isAudibleAlertsEnabled()) {
+      AudibleTrafficAlerts.getAndStartAudibleTrafficAlerts(1.5 /* TODO: configurable */).then((value) {
+        // TODO: Set all of the "pref" settings from new Storage params (which in turn have a config UI?)
+        value?.processTrafficForAudibleAlerts(_traffic, _ownshipLocation, _ownshipUpdateTime, ownshipVspeed, ownshipIcao, ownshipIsAirborne);
+      });
+    }
   }
 
   List<Traffic> getTraffic() {

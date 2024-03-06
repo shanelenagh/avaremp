@@ -120,12 +120,19 @@ class AppSettings {
   }
 
   bool isInternalGps() {
-    //TODO: Set me back after merge (and find out how to gracefully set for testing)
-    return false; //Settings.getValue("key-internal-gps", defaultValue: true) as bool;
+    return Settings.getValue("key-internal-gps", defaultValue: true) as bool;
   }
 
   void setInternalGps(bool value) {
     Settings.setValue("key-internal-gps", value);
   }
+
+  bool isAudibleAlertsEnabled() {
+    return Settings.getValue("key-audible-alerts", defaultValue: true) as bool;
+  }
+
+  void setAudibleAlertsEnabled(bool value) {
+    Settings.setValue("key-audible-alerts", value);
+  }  
 
 }

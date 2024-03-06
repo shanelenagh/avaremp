@@ -5,14 +5,13 @@ import 'package:avaremp/storage.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
 import 'package:avaremp/gdl90/audible_traffic_alerts.dart';
 
 import '../gps.dart';
 
 class Traffic {
 
-  TrafficReportMessage message;
+  final TrafficReportMessage message;
 
   Traffic(this.message);
 
@@ -22,11 +21,29 @@ class Traffic {
   }
 
   Widget getIcon() {
-    Widget traffic = Transform.rotate(angle: message.heading * pi / 180, child: Icon(MdiIcons.navigation, color: Colors.black));
-    Widget callSign = Text(message.callSign, style: const TextStyle(color: Colors.black),);
-    return (Stack(children:[traffic, callSign]));
+    return Transform.rotate(angle: message.heading * pi / 180,
+        child: Container(
+          decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(5),
+              color: Colors.black),
+          child:const Icon(Icons.arrow_upward_rounded, color: Colors.white,)));
   }
+
+  LatLng getCoordinates() {
+    return message.coordinates;
+  }
+
+  @override
+  String toString() {
+    return "${message.callSign}\n${message.altitude.toInt()} ft\n"
+    "${(message.velocity * 1.94384).toInt()} knots\n"
+    "${(message.verticalSpeed * 3.28).toInt()} fpm";
+  }
+
 }
+
+
+
 
 class TrafficCache {
   static const int maxEntries = 20;
@@ -58,7 +75,11 @@ class TrafficCache {
 
   void putTraffic(TrafficReportMessage message) {
 
-    // XXX filter own report
+    // filter own report
+    if(message.icao == Storage().myIcao) {
+      // do not add ourselves
+      return;
+    }
 
     for(Traffic? traffic in _traffic) {
       int index = _traffic.indexOf(traffic);

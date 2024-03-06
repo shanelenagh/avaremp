@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:avaremp/airport.dart';
+import 'package:avaremp/gdl90/nexrad_cache.dart';
 import 'package:avaremp/geo_calculations.dart';
 import 'package:avaremp/data/main_database_helper.dart';
 import 'package:avaremp/plan_route.dart';
@@ -17,6 +18,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
 import 'package:flutter_map_tile_caching/flutter_map_tile_caching.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:just_the_tooltip/just_the_tooltip.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
 import 'package:path/path.dart';
@@ -186,7 +188,12 @@ class MapScreenState extends State<MapScreen> {
                     options: MarkerClusterLayerOptions(
                       markers: [
                         for(Metar m in metars)
-                          Marker(point: m.coordinate, child: m.getIcon())
+                          Marker(point: m.coordinate,
+                              child: JustTheTooltip(
+                                content: Container(padding: const EdgeInsets.all(5), child:Text(m.toString())),
+                                triggerMode: TooltipTriggerMode.tap,
+                                waitDuration: const Duration(seconds: 1),
+                                child: m.getIcon(),))
                       ],
                       builder: (context, markers) {
                         return Container(
@@ -212,10 +219,10 @@ class MapScreenState extends State<MapScreen> {
                       markers: [
                         for(Airep a in airep)
                           Marker(point: a.coordinates,
-                              child:Tooltip(message: a.toString(),
+                              child:JustTheTooltip(
+                                content: Container(padding: const EdgeInsets.all(5), child:Text(a.toString())),
                                 triggerMode: TooltipTriggerMode.tap,
-                                decoration: BoxDecoration(borderRadius: BorderRadius.circular(5), color: Colors.white),
-                                showDuration: const Duration(seconds: 30),
+                                waitDuration: const Duration(seconds: 1),
                                 child: const Icon(Icons.person, color: Colors.black,)))
                       ],
                       builder: (context, markers) {
@@ -241,12 +248,13 @@ class MapScreenState extends State<MapScreen> {
                   polylines: [
                     // route
                     for(AirSigmet a in airSigmet)
-                      Polyline(
-                          borderStrokeWidth: 1,
-                          borderColor: Colors.white,
-                          strokeWidth: 2,
-                          points: a.coordinates,
-                          color: a.getColor(),
+                      if(a.showShape)
+                        Polyline(
+                            borderStrokeWidth: 1,
+                            borderColor: Colors.white,
+                            strokeWidth: 2,
+                            points: a.coordinates,
+                            color: a.getColor(),
                       ),
                   ],
                 );
@@ -266,16 +274,52 @@ class MapScreenState extends State<MapScreen> {
                     for(AirSigmet a in airSigmet)
                       Marker(
                         point: a.coordinates[0],
-                        child: Tooltip(message: a.toString(),
+                        child: JustTheTooltip(
+                          content: Container(
+                            padding: const EdgeInsets.all(5),
+                            child: Text(a.toString())
+                          ),
+
+                          waitDuration: const Duration(seconds: 1),
                           triggerMode: TooltipTriggerMode.tap,
-                          decoration: BoxDecoration(borderRadius: BorderRadius.circular(5), color: Colors.white),
-                          showDuration: const Duration(seconds: 30),
-                          child: Icon(Icons.ac_unit_rounded, color: a.getColor(),),))
+                          child: GestureDetector(
+                            onLongPress: () {
+                              a.showShape = !a.showShape;
+                              Storage().airSigmet.change.value++;
+                            },
+                            child:Icon(Icons.ac_unit_rounded,
+                            color: a.getColor()
+                          )
+                          )
+                        )
+                      )
                   ],
                 );
 
               }
           )
+      );
+
+      layers.add(
+        // nexrad layer
+        ValueListenableBuilder<int>(
+          valueListenable: Storage().timeChange,
+          builder: (context, value, _) {
+            bool conus = true;
+            if(_controller != null) {
+              // show conus above zoom level 7
+              conus = _controller!.camera.zoom < 7 ? true : false;
+            }
+            List<NexradImage> images = conus ? Storage().nexradCache.getNexradConus() : Storage().nexradCache.getNexrad();
+            return OverlayImageLayer(
+              overlayImages:
+              images.map((e) {
+                return OverlayImage(imageProvider: MemoryImage(e.getImage()!),
+                    bounds: e.getBounds());
+              }).toList(),
+            );
+          },
+        ),
       );
 
     }
@@ -318,10 +362,10 @@ class MapScreenState extends State<MapScreen> {
                   // route
                     Marker(
                         point: tfr.coordinates[0],
-                        child: Tooltip(message: tfr.toString(),
+                        child: JustTheTooltip(
+                          content: Container(padding: const EdgeInsets.all(5), child:Text(tfr.toString())),
                           triggerMode: TooltipTriggerMode.tap,
-                          decoration: BoxDecoration(borderRadius: BorderRadius.circular(5), color: Colors.white),
-                          showDuration: const Duration(seconds: 30),
+                          waitDuration: const Duration(seconds: 1),
                           child: const Icon(Icons.warning_amber_sharp, color: Colors.black,),)
                     ),
               ],
@@ -358,6 +402,29 @@ class MapScreenState extends State<MapScreen> {
       );
     }
 
+    lIndex = _layers.indexOf('Traffic');
+    if(_layersState[lIndex]) {
+      layers.add(
+        // traffic layer
+        ValueListenableBuilder<int>(
+          valueListenable: Storage().timeChange,
+          builder: (context, value, _) {
+            return MarkerLayer(
+              markers:
+              Storage().trafficCache.getTraffic().map((e) {
+                return Marker( // our position and heading to destination
+                    point: e.getCoordinates(),
+                    child: JustTheTooltip(
+                        content: Container(padding: const EdgeInsets.all(5), child:Text(e.toString())),
+                        triggerMode: TooltipTriggerMode.tap,
+                        waitDuration: const Duration(seconds: 1),
+                        child: e.getIcon()));
+              }).toList(),
+            );
+          },
+        ),
+      );
+    }
 
     lIndex = _layers.indexOf('Nav');
     if(_layersState[lIndex]) {
@@ -489,25 +556,6 @@ class MapScreenState extends State<MapScreen> {
                   color: Constants.trackColor,
                 ),
               ],
-            );
-          },
-        ),
-      );
-
-      layers.add(
-        // traffic layer
-        ValueListenableBuilder<int>(
-          valueListenable: Storage().timeChange,
-          builder: (context, value, _) {
-            return MarkerLayer(
-              markers:
-              Storage().trafficCache.getTraffic().map((e) {
-                return Marker( // our position and heading to destination
-                  width: 64,
-                  point: e.message.coordinates,
-                  child: e.getIcon()
-                );
-              }).toList(),
             );
           },
         ),

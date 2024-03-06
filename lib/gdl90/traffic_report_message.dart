@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:avaremp/gdl90/ownship_message.dart';
+import 'package:avaremp/geo_calculations.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'message.dart';
@@ -12,7 +13,7 @@ class TrafficReportMessage extends Message {
   double verticalSpeed = 0;
   double heading = 0;
   String callSign = "";
-  bool isAirborne = false;
+  bool airborne = false;
 
   TrafficReportMessage(super.type);
 
@@ -36,7 +37,25 @@ class TrafficReportMessage extends Message {
     }
     altitude = alt.toDouble();
 
-    isAirborne = (message[11] & 0x08) != 0;
+
+    /*
+     * next nibble is miscellaneous indicators:
+     * bit 3   bit 2    bit 1    bit 0
+     *   x       x        0        0    = heading not valid
+     *   x       x        0        1    = heading is true track angle
+     *   x       x        1        0    = heading is magnetic heading
+     *   x       x        1        1    = heading is true heading
+     *   x       0        x        x    = report is updated
+     *   x       1        x        x    = report is extrapolated
+     *   0       x        x        x    = on ground
+     *   1       x        x        x    = airborne
+     */
+    airborne = (message[11].toInt() & 0x08) != 0;
+    if ((message[11].toInt() & 0x03) == 2) {
+      // magnetic heading. Subtract variation, charts are true so show true
+      double variation = GeoCalculations().getVariation(coordinates);
+      heading = GeoCalculations.getMagneticHeading(heading, -variation);
+    }
 
     upper = ((message[13].toInt() & 0xFF)) << 4;
     lower = ((message[14].toInt() & 0xF0)) >> 4;
@@ -64,7 +83,7 @@ class TrafficReportMessage extends Message {
 
     // call sign from 18 to 25
     Uint8List call = message.sublist(18, 26);
-    callSign = String.fromCharCodes(call).replaceAll(' ', '');
+    callSign = String.fromCharCodes(call).replaceAll(RegExp("[^a-zA-Z0-9]"), "");
 
   }
 

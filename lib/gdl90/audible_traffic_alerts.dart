@@ -173,9 +173,9 @@ class AudibleTrafficAlerts {
 
     bool hasInserts = false;
     for (final traffic in trafficList) {
-      if (traffic == null || traffic.message.icao == ownIcao || !(traffic.message.isAirborne || prefIsAudibleGroundAlertsEnabled)) {      
+      if (traffic == null || traffic.message.icao == ownIcao || !(traffic.message.airborne || prefIsAudibleGroundAlertsEnabled)) {      
         if (_log.level <= Level.FINER) { // Preventing unnecessary string interpolcation of log message, per log level
-          _log.finer("Skipping this traffic [${_getTrafficKey(traffic)}] processing due to precondition (e.g., ownship icao [$ownIcao], traffic airborne [${traffic?.message.isAirborne}] filter, etc.)");
+          _log.finer("Skipping this traffic [${_getTrafficKey(traffic)}] processing due to precondition (e.g., ownship icao [$ownIcao], traffic airborne [${traffic?.message.airborne}] filter, etc.)");
         }        
         continue;
       }

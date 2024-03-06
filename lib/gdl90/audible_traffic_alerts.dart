@@ -93,8 +93,10 @@ class AudibleTrafficAlerts {
   static Future<void> stopAudibleTrafficAlerts() async {
     _instance?._isRunning = false;
     _log.info("Stopped audible traffic alerts");
-    await _instance?._destroy();
+    final Completer<void> completer = Completer();
+    _instance?._destroy().then((value) => completer.complete());
     _instance = null;
+    return completer.future;
   }
 
   AudibleTrafficAlerts._privateConstructor();

@@ -107,6 +107,11 @@ class AudibleTrafficAlerts {
       _log.info("Stopped audible traffic alerts");
       _isShuttingDown = false;
       _shutdownCompleter?.complete();
+    }).onError((error, stackTrace) {
+      _instance = null;
+      _log.warning("Stopped audible traffic alerts with errors: [error=$error] [stacktrace=$stackTrace]");
+      _isShuttingDown = false;
+      _shutdownCompleter?.complete();
     });
     return _shutdownCompleter?.future;
   }

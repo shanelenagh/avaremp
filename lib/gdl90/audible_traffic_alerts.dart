@@ -69,10 +69,11 @@ class AudibleTrafficAlerts {
   bool _isRunning = false;
   bool _isPlaying = false;
 
+  final Completer<AudibleTrafficAlerts> _completer = Completer();
+
 
   static Future<AudibleTrafficAlerts?> getAndStartAudibleTrafficAlerts(double playRate) async {
-    if (_instance == null) {
-      final Completer<AudibleTrafficAlerts> completer = Completer();
+    if (_instance == null) { 
       Logger.root.level = Level.INFO;
       Logger.root.onRecord.listen((record) {
         print('${record.time} ${record.level.name} [${record.loggerName}] - ${record.message}');
@@ -81,11 +82,10 @@ class AudibleTrafficAlerts {
       _instance?._loadAudio(playRate).then((value) { 
         _log.info("Started audible traffic alerts. Settings: playRate=$playRate");
         _instance?._isRunning = true;
-        completer.complete(_instance);
+        _instance?._completer.complete(_instance);
       });
-      return completer.future;
     }
-    return _instance;
+    return _instance?._completer.future;
   }
 
   static Future<void> stopAudibleTrafficAlerts() async {

@@ -431,14 +431,15 @@ class AudibleTrafficAlerts {
   /// Speak a number in colloquial format (1962 ==> "one thousand nine hundred sixty-two")
   /// @param alertAudio List of sounds to append to
   /// @param numeric Numeric value to speak into alertAudio
-  void _addColloquialNumericBaseAlertAudio(List<AudioPlayer> alertAudio, double numeric) {
+  void _addColloquialNumericBaseAlertAudio(List<AudioPlayer> alertAudio, final double numeric) {
     final double log10Val = numerics.log10(numeric);
-    for (int i = max(log10Val.isInfinite || log10Val.isNaN ? -1 : log10Val.round(), 0); i >= 0; i--) {
+    double curNumeric = numeric;
+    for (int i = max(log10Val.isInfinite || log10Val.isNaN ? -1 : log10Val.floor(), 0); i >= 0; i--) {
       if (i == 0
         // Only speak "zero" if it is only zero (not part of tens/hundreds/thousands)
-        && ((numeric % 10) != 0 || (max(numerics.log10(numeric), 0)) == 0))
+        && ((min(curNumeric % 10, 9).floor()) != 0 || (max(numerics.log10(numeric), 0)) == 0))
       {
-        alertAudio.add(_numberAudios[min(numeric % 10, 9).floor()]);
+        alertAudio.add(_numberAudios[min(curNumeric % 10, 9).floor()]);
       } else {
         if (i > 3) {
           alertAudio.add(_overAudio);
@@ -447,9 +448,9 @@ class AudibleTrafficAlerts {
           return;
         } else {
           final double pow10 = pow(10, i) * 1.0;
-          final int digit = min(numeric / pow10, 9).floor();
+          final int digit = min(curNumeric / pow10, 9).floor();
           if (i == 1 && digit == 1) {             // tens/teens
-            alertAudio.add(_numberAudios[10 + (numeric.floor()) % 10]);
+            alertAudio.add(_numberAudios[10 + (curNumeric.floor()) % 10]);
             return;
           } else {
             if (i == 1 && digit != 0) {         // twenties/thirties/etc.
@@ -461,7 +462,7 @@ class AudibleTrafficAlerts {
               alertAudio.add(_numberAudios[digit]);
               alertAudio.add(_thousandAudio);
             }
-            numeric = numeric % pow10;
+            curNumeric = curNumeric % pow10;
           }
         }
       }

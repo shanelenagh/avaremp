@@ -24,7 +24,7 @@ class AudibleTrafficAlerts {
   static AudibleTrafficAlerts? _instance;
   static final Logger _log = Logger('AudibleTrafficAlerts');
 
-  final AudioCache _audioCache = AudioCache(prefix: "assets/audio/traffic_alerts/");
+  static final AudioCache _audioCache = AudioCache(prefix: "assets/audio/traffic_alerts/");
 
   // Audio players for each sound used to compose an alert
   final AudioPlayer _trafficAudio = AudioPlayer();
@@ -70,23 +70,18 @@ class AudibleTrafficAlerts {
 
   bool _isRunning = false;
   bool _isPlaying = false;
-  static bool _isShuttingDown = false;
 
   final Completer<AudibleTrafficAlerts> _startupCompleter = Completer();
-  static Completer<void>? _shutdownCompleter;
 
 
   static Future<AudibleTrafficAlerts?> getAndStartAudibleTrafficAlerts(double playRate) async {
-    if (_isShuttingDown) {
-      await _shutdownCompleter?.future;
-    }
     if (_instance == null) { 
-      Logger.root.level = Level.INFO;
+      Logger.root.level = Level.FINE;
       Logger.root.onRecord.listen((record) {
         print('${record.time} ${record.level.name} [${record.loggerName}] - ${record.message}');
       });      
       _instance = AudibleTrafficAlerts._privateConstructor();
-      _instance?._loadAudio(playRate).then((value) { 
+      _instance?._loadAudio(playRate, _audioCache.loadedFiles.isEmpty).then((value) { 
         _log.info("Started audible traffic alerts. Settings: playRate=$playRate");
         _instance?._isRunning = true;
         _instance?._startupCompleter.complete(_instance);
@@ -96,33 +91,27 @@ class AudibleTrafficAlerts {
   }
 
   static Future<void> stopAudibleTrafficAlerts() async {
-    if (_instance == null || _isShuttingDown) {
-      return;
-    }
-    _shutdownCompleter = Completer();
-    _isShuttingDown = true;
-    _instance?._isRunning = false;
-    _instance?._destroy().then((value) {
+    if (_instance != null) {
+      _instance?._isRunning = false;
+      _instance?._alertQueue.clear();
+      _instance?._isPlaying = false;
       _instance = null;
-      _log.info("Stopped audible traffic alerts");
-      _isShuttingDown = false;
-      _shutdownCompleter?.complete();
-    }).onError((error, stackTrace) {
-      _instance = null;
-      _log.warning("Stopped audible traffic alerts with errors: [error=$error] [stacktrace=$stackTrace]");
-      _isShuttingDown = false;
-      _shutdownCompleter?.complete();
-    });
-    return _shutdownCompleter?.future;
+      final Completer<void> shutdownCompleter = Completer();
+      // Try to reclaim memory of audio cache, if at all possible (e.g., no temp dir delete issues)
+      _audioCache.clearAll().then((value) {
+        _log.info("Stopped audible traffic alerts.");
+        shutdownCompleter.complete();
+      }).onError((error, stackTrace) {
+        _log.warning("Stopped audible traffic alerts with exceptions: [$error]\n    Stacktrace: [$stackTrace]");
+        shutdownCompleter.complete();        
+      });
+      return shutdownCompleter.future;
+    } 
   }
 
   AudibleTrafficAlerts._privateConstructor();
 
-  Future<void> _destroy() async {
-    return _audioCache.clearAll();
-  }
-
-  Future<List<dynamic>> _loadAudio(double playRate) async {
+  Future<List<dynamic>> _loadAudio(double playRate, bool loadCache) async {
     final singleAudioMap = { 
       _trafficAudio: "tr_traffic.mp3", _bogeyAudio: "tr_bogey.mp3", _closingInAudio: "tr_cl_closingin.mp3", _overAudio: "tr_cl_over.mp3",
       _lowAudio: "tr_low.mp3", _highAudio: "tr_high.mp3", _sameAltitudeAudio: "tr_same_altitude.mp3", _oClockAudio: "tr_oclock.mp3",
@@ -142,21 +131,23 @@ class AudibleTrafficAlerts {
     };
     final List<Future> futures = [];
     for (final singleEntry in singleAudioMap.entries) {
-      futures.add(_populateAudio(singleEntry.key, singleEntry.value, playRate));
+      futures.add(_populateAudio(singleEntry.key, singleEntry.value, playRate, loadCache));
     }
     for (final listEntry in listAudioMap.entries) {
       for (final assetName in listEntry.value) {
         final player = AudioPlayer();
-        futures.add(_populateAudio(player, assetName, playRate));
+        futures.add(_populateAudio(player, assetName, playRate, loadCache));
         listEntry.key.add(player);
       }
     }
     return Future.wait(futures);
   }
 
-  Future<List<dynamic>> _populateAudio(AudioPlayer player, String assetSourceName, double playRate) async {
+  Future<List<dynamic>> _populateAudio(AudioPlayer player, String assetSourceName, double playRate, bool loadCache) async {
     final List<Future> futures = [];
-    futures.add(_audioCache.load(assetSourceName));
+    if (loadCache) {
+      futures.add(_audioCache.load(assetSourceName));
+    }
     player.audioCache = _audioCache;
     futures.add(player.setSource(AssetSource(assetSourceName)));
     futures.add(player.setPlayerMode(PlayerMode.lowLatency));   
@@ -206,7 +197,7 @@ class AudibleTrafficAlerts {
               ? _determineClosingEvent(ownshipLocation, traffic, curDistance, ownVspeed)
               : null
             , curDistance, altDiff)
-        );
+        );      
       } else if (_log.level <= Level.FINER) {
         _log.finer("Traffic [$trafficKey] didn't make the cut, with alt diff=$altDiff and distance=$curDistance");
       }
@@ -221,6 +212,9 @@ class AudibleTrafficAlerts {
   bool _upsertTrafficAlertQueue(_AlertItem alert) {
     final int existingIndex = _alertQueue.indexOf(alert);
     if (existingIndex == -1) {
+      if (_log.level <= Level.FINE) { // Preventing unnecessary string interpolcation of log message, per log level
+        _log.fine("Adding [$alert] to the queue with current size ${_alertQueue.length}");
+      }       
       // If this is a "critically close" alert, put it ahead of the first non-critically close alert
       final int alertQueueSize;
       if (alert._closingEvent != null && alert._closingEvent._isCriticallyClose && (alertQueueSize = _alertQueue.length) > 0) {
@@ -228,14 +222,16 @@ class AudibleTrafficAlerts {
           final _AlertItem curAlert = _alertQueue[i];
           if (curAlert._closingEvent == null || !curAlert._closingEvent._isCriticallyClose) {
             _alertQueue.insert(i, alert);
-            break;
+            return true;
           }
         }
-      } else {
-        _alertQueue.add(alert);
       }
+      _alertQueue.add(alert);
       return true;
     } else {
+      if (_log.level <= Level.FINE) { // Preventing unnecessary string interpolcation of log message, per log level
+        _log.fine("Updating [$alert] to the queue with current size ${_alertQueue.length} at position $existingIndex");
+      }         
       _alertQueue[existingIndex] = alert;
     }
     return false;
@@ -275,10 +271,9 @@ class AudibleTrafficAlerts {
   }  
 
   void runAudibleAlertsQueueProcessing() {
-    if (!_isRunning || _isPlaying || _alertQueue.isEmpty) {
+    if (!_isRunning || _isPlaying || _alertQueue.isEmpty) {   
       return;
     }
-    
     int timeToWaitForTraffic = _kMaxIntValue;
     // Loop to allow a traffic item to cede place in line to next available one to be considered if current one can't go now
     for (int i = 0; i < _alertQueue.length; i++) {

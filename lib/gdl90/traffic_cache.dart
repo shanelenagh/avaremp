@@ -128,6 +128,8 @@ class TrafficCache {
         // TODO: Set all of the "pref" settings from new Storage params (which in turn have a config UI?)
         value?.processTrafficForAudibleAlerts(_traffic, _ownshipLocation, _ownshipUpdateTime, ownshipVspeed, ownshipIcao, ownshipIsAirborne);
       });
+    } else {
+      AudibleTrafficAlerts.stopAudibleTrafficAlerts();
     }
   }
 

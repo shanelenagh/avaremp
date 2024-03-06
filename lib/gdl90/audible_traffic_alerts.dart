@@ -91,11 +91,16 @@ class AudibleTrafficAlerts {
   }
 
   static Future<void> stopAudibleTrafficAlerts() async {
+    if (_instance == null) {
+      return;
+    }
     _instance?._isRunning = false;
-    _log.info("Stopped audible traffic alerts");
     final Completer<void> completer = Completer();
-    _instance?._destroy().then((value) => completer.complete());
-    _instance = null;
+    _instance?._destroy().then((value) {
+      _instance = null;
+      _log.info("Stopped audible traffic alerts");
+      completer.complete();
+    });
     return completer.future;
   }
 

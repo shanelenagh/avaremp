@@ -114,7 +114,7 @@ class AudibleTrafficAlerts {
   AudibleTrafficAlerts._privateConstructor();
 
   Future<void> _destroy() async {
-    await _audioCache.clearAll();
+    return _audioCache.clearAll();
   }
 
   Future<List<dynamic>> _loadAudio(double playRate) async {

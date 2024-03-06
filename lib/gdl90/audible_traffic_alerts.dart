@@ -99,9 +99,9 @@ class AudibleTrafficAlerts {
     if (_instance == null || _isShuttingDown) {
       return;
     }
+    _shutdownCompleter = Completer();
     _isShuttingDown = true;
     _instance?._isRunning = false;
-    _shutdownCompleter = Completer();
     _instance?._destroy().then((value) {
       _instance = null;
       _log.info("Stopped audible traffic alerts");
@@ -275,7 +275,7 @@ class AudibleTrafficAlerts {
     }
     
     int timeToWaitForTraffic = _kMaxIntValue;
-    // Loop to allow a traffic item to cede place in line to next one if available if it can't go now
+    // Loop to allow a traffic item to cede place in line to next available one to be considered if current one can't go now
     for (int i = 0; i < _alertQueue.length; i++) {
       final _AlertItem nextAlert = _alertQueue[i];
       if (_log.level <= Level.FINER) { // Preventing unnecessary string interpolcation of log message, per log level
@@ -309,7 +309,6 @@ class AudibleTrafficAlerts {
       Future.delayed(Duration(milliseconds: timeToWaitForTraffic), runAudibleAlertsQueueProcessing);
     }
   }
-
 
   /// Construct sound sequence based on alert properties and preference configuration
   /// @param alert Alert item to build sound sequence for
@@ -568,7 +567,6 @@ class AudibleTrafficAlerts {
         timestamp: DateTime.now()
       );
   }
-
 }
 
 
@@ -584,6 +582,11 @@ class _ClosingEvent {
 
   double closingSeconds() {
     return _closingTimeSec-(DateTime.now().millisecondsSinceEpoch - _eventTimeMillis)/1000.0000;
+  }
+
+  @override
+  String toString() {
+    return "${_closingTimeSec}s within ${_closestApproachDistanceNmi}mi${_isCriticallyClose ? " CRITICAL " : ""}";
   }
 }
 
@@ -607,17 +610,22 @@ class _AlertItem {
       && other.runtimeType == runtimeType
       && _traffic?.message.icao == other._traffic?.message.icao;
   }
+
+  @override
+  String toString() {
+    return "ICAO ${_traffic?.message.icao}: $_distanceNmi miles, altdiff=$_altDiff, ce=[$_closingEvent]";
+  }
 }
 
 
 class _AudioSequencePlayer {
   final List<AudioPlayer?> _audioPlayers;
-  final Completer _completer;
+  final Completer _completer = Completer();
   StreamSubscription<void>? _lastAudioPlayerSubscription;
   int _seqIndex = 0;
 
   _AudioSequencePlayer(List<AudioPlayer?> audioPlayers) 
-    : _audioPlayers = audioPlayers, _completer = Completer(), assert(audioPlayers.isNotEmpty)
+    : _audioPlayers = audioPlayers, assert(audioPlayers.isNotEmpty)
   {
     _lastAudioPlayerSubscription = _audioPlayers[0]?.onPlayerComplete.listen(_handleNextSeqAudio);      
   }

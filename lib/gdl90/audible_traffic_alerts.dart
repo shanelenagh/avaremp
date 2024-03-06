@@ -614,7 +614,7 @@ class _AlertItem {
 
   @override
   String toString() {
-    return "ICAO ${_traffic?.message.icao}: $_distanceNmi miles, altdiff=$_altDiff, ce=[$_closingEvent]";
+    return "[${AudibleTrafficAlerts._getTrafficKey(_traffic)}]: ${_distanceNmi}nmi, altdiff=$_altDiff, ce=[$_closingEvent]";
   }
 }
 

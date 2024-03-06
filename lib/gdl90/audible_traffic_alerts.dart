@@ -3,10 +3,11 @@ import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:avaremp/gdl90/traffic_cache.dart';
 import 'package:geolocator/geolocator.dart';
-import 'traffic_math.dart';
 import 'dart:math';
 import 'package:dart_numerics/dart_numerics.dart' as numerics;
 import 'package:logging/logging.dart';
+import 'package:vector_math/vector_math.dart';
+
 
 enum TrafficIdOption { phoneticAlphaId, fullCallsign, none }
 enum DistanceCalloutOption { none, rounded, decimal }
@@ -18,6 +19,7 @@ class AudibleTrafficAlerts {
   static const double _kMpsToKnotsConv = 1.0/0.514444;
   static const double _kMetersToFeetCont = 3.28084;
   static const int _kMaxIntValue = 9999999999;
+  static const double _kMetersPerNauticalMile = 1852.000;
 
   static AudibleTrafficAlerts? _instance;
   static final Logger _log = Logger('AudibleTrafficAlerts');
@@ -173,7 +175,7 @@ class AudibleTrafficAlerts {
       }       
       if ((lastTrafficPositionUpdateValue == null || lastTrafficPositionUpdateValue != trafficPositionTimeCalcUpdateValue)
         && altDiff.abs() < prefTrafficAlertsHeight
-        && (curDistance = greatCircleDistanceNmi(ownshipLocation.latitude, ownshipLocation.longitude,
+        && (curDistance = _greatCircleDistanceNmi(ownshipLocation.latitude, ownshipLocation.longitude,
           traffic.message.coordinates.latitude, traffic.message.coordinates.longitude)) < prefAudibleTrafficAlertsDistanceMinimum
       ) {
         if (_log.level <= Level.FINE) { // Preventing unnecessary string interpolcation of log message, per log level
@@ -224,15 +226,15 @@ class AudibleTrafficAlerts {
   {
       final int ownSpeedInKts = (_kMpsToKnotsConv * ownshipLocation.speed).round();
       final double ownAltInFeet = _kMetersToFeetCont * ownshipLocation.altitude;
-      final double closingEventTimeSec = (closestApproachTime(
+      final double closingEventTimeSec = (_closestApproachTime(
               traffic.message.coordinates.latitude, traffic.message.coordinates.longitude, 
               ownshipLocation.latitude, ownshipLocation.longitude, traffic.message.heading, ownshipLocation.heading, 
               traffic.message.velocity.round(), ownSpeedInKts
       )).abs() * 60.00 * 60.00;
       if (closingEventTimeSec < prefClosingTimeThresholdSeconds) {    // Gate #1: Time threshold met
-          final Position myCaLoc = locationAfterTime(ownshipLocation.latitude, ownshipLocation.longitude,
+          final Position myCaLoc = _locationAfterTime(ownshipLocation.latitude, ownshipLocation.longitude,
                   ownshipLocation.heading, ownSpeedInKts*1.0, closingEventTimeSec/3600.000, ownAltInFeet, ownVspeed);
-          final Position theirCaLoc = locationAfterTime(traffic.message.coordinates.latitude, traffic.message.coordinates.longitude,
+          final Position theirCaLoc = _locationAfterTime(traffic.message.coordinates.latitude, traffic.message.coordinates.longitude,
             traffic.message.heading, traffic.message.velocity, closingEventTimeSec/3600.000, traffic.message.altitude, 
             traffic.message.verticalSpeed);
           double? caDistance;
@@ -240,7 +242,7 @@ class AudibleTrafficAlerts {
           // Gate #2: If traffic will be within configured "cylinder" of closing/TCPA alerts, create a closing event
           if (altDiff.abs() < prefClosingAlertAltitude
                   && (
-                    caDistance = greatCircleDistanceNmi(myCaLoc.latitude, myCaLoc.longitude, theirCaLoc.latitude, theirCaLoc.longitude)
+                    caDistance = _greatCircleDistanceNmi(myCaLoc.latitude, myCaLoc.longitude, theirCaLoc.latitude, theirCaLoc.longitude)
                   ) < prefClosestApproachThresholdNmi
                   && currentDistance > caDistance)    // catches cases when moving away
           {
@@ -316,7 +318,7 @@ class AudibleTrafficAlerts {
           _addTimeToClosestPointOfApproachAudio(alertAudio, alert._closingEvent);
       }
 
-      final int clockHour = nearestClockHourFromHeadingAndLocations(alert._ownLocation?.latitude??0,
+      final int clockHour = _nearestClockHourFromHeadingAndLocations(alert._ownLocation?.latitude??0,
 										alert._ownLocation?.longitude??0, alert._traffic?.message.coordinates.latitude??0, 
                     alert._traffic?.message.coordinates.longitude??0, alert._ownLocation?.heading??0);
       _addPositionAudio(alertAudio, clockHour, alert._altDiff);
@@ -482,9 +484,77 @@ class AudibleTrafficAlerts {
       return false;
   }  
 
+  static double _relativeBearingFromHeadingAndLocations(final double lat1, final double long1,
+                              final double lat2, final double long2,  final double myBearing)
+  {
+    return (Geolocator.bearingBetween(lat1, long1, lat2, long2) - myBearing + 360) % 360;
+  }  
+
+  static int _nearestClockHourFromHeadingAndLocations(
+          final double lat1, final double long1, final double lat2, final double long2, final double myBearing)
+  {
+    final int nearestClockHour = (_relativeBearingFromHeadingAndLocations(lat1, long1, lat2, long2, myBearing)/30.0).round();
+    return nearestClockHour != 0 ? nearestClockHour : 12;
+  }  
+
+  /// Great circle distance between two lat/lon's via Haversine formula, Java impl courtesy of https://introcs.cs.princeton.edu/java/12types/GreatCircle.java.html
+  /// @param lat1 Latitude 1
+  /// @param lon1 Longitude 1
+  /// @param lat2 Latitude 2
+  /// @param lon2 Longitude 2
+  /// @return Great circle distance between two points in nautical miles
+  static double _greatCircleDistanceNmi(final double lat1, final double lon1, final double lat2, final double lon2) 
+  {
+    return Geolocator.distanceBetween(lat1, lon1, lat2, lon2) / _kMetersPerNauticalMile;
+  }  
+
   static String _getTrafficKey(Traffic? traffic) {
     return "${traffic?.message.callSign}:${traffic?.message.icao}";
   }
+
+  /// Time to closest approach between two 2-d kinematic vectors; credit to: https://math.stackexchange.com/questions/1775476/shortest-distance-between-two-objects-moving-along-two-lines
+  /// @param lat1 Latitude 1
+  /// @param lon1 Longitude 2
+  /// @param lat2 Latitude 2
+  /// @param lon2 Longitude 2
+  /// @param heading1 Heading 1
+  /// @param heading2 Heading 2
+  /// @param velocity1 Velocity 1
+  /// @param velocity2 Velocity 2
+  /// @return Time (in units of velocity) of closest point of approach
+  static double _closestApproachTime(final double lat1, final double lon1, final double lat2, final double lon2,
+                                          final double heading1, final double heading2, final int velocity1, final int velocity2)
+  {
+    // Use cosine of average of two latitudes, to give some weighting for lesser intra-lon distance at higher latitudes
+    final double a = (lon2 - lon1) * (60.0000 * cos(radians((lat1+lat2)/2.0000)));
+    final double b = velocity2*sin(radians(heading2)) - velocity1*sin(radians(heading1));
+    final double c = (lat2 - lat1) * 60.0000;
+    final double d = velocity2*cos(radians(heading2)) - velocity1*cos(radians(heading1));
+
+    return - ((a*b + c*d) / (b*b + d*d));
+  }
+
+  static Position _locationAfterTime(final double lat, final double lon, final double heading, final double velocityInKt, 
+    final double timeInHrs, final double altInFeet, final double vspeedInFpm) 
+  {
+      final double newLat =  lat + cos(radians(heading)) * (velocityInKt/60.00000) * timeInHrs;
+      return Position (
+        latitude: newLat,
+        longitude: lon + sin(radians(heading))
+                // Again, use cos of average lat to give some weighting based on shorter intra-lon distance changes at higher latitudes
+                * (velocityInKt / (60.00000*cos(radians((newLat+lat)/2.0000))))
+                * timeInHrs,
+        altitude: altInFeet + (vspeedInFpm * (60.0 * timeInHrs)),
+        altitudeAccuracy: 0,
+        heading: heading,
+        headingAccuracy: 0,
+        speed: velocityInKt,
+        speedAccuracy: 0,
+        accuracy: 0,
+        timestamp: DateTime.now()
+      );
+  }
+
 }
 
 

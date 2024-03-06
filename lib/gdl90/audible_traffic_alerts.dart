@@ -8,9 +8,9 @@ import 'dart:math';
 import 'package:dart_numerics/dart_numerics.dart' as numerics;
 import 'package:logging/logging.dart';
 
-enum TrafficIdOption { PHONETIC_ALPHA_ID, FULL_CALLSIGN, NONE }
-enum DistanceCalloutOption { NONE, ROUNDED, DECIMAL }
-enum NumberFormatOption { COLLOQUIAL, INDIVIDUAL_DIGIT }
+enum TrafficIdOption { phoneticAlphaId, fullCallsign, none }
+enum DistanceCalloutOption { none, rounded, decimal }
+enum NumberFormatOption { colloquial, individualDigit }
 
 
 class AudibleTrafficAlerts {
@@ -22,37 +22,37 @@ class AudibleTrafficAlerts {
   static AudibleTrafficAlerts? _instance;
   static final Logger _log = Logger('AudibleTrafficAlerts');
 
-  final AudioCache _audioCache;
+  final AudioCache _audioCache = AudioCache(prefix: "assets/audio/traffic_alerts/");
 
   // Audio players for each sound used to compose an alert
-  final AudioPlayer _trafficAudio;
-  final AudioPlayer _bogeyAudio;
-  final AudioPlayer _closingInAudio;
-  final AudioPlayer _overAudio;
-  final AudioPlayer _lowAudio, _highAudio, _sameAltitudeAudio;
-  final AudioPlayer _oClockAudio;
-  final List<AudioPlayer> _twentiesToNinetiesAudios;
-  final AudioPlayer _hundredAudio, _thousandAudio;
-  final AudioPlayer _atAudio;
-  final List<AudioPlayer> _alphabetAudios;
-  final List<AudioPlayer> _numberAudios;
-  final AudioPlayer _secondsAudio;
-  final AudioPlayer _milesAudio;
-  final AudioPlayer _climbingAudio, _descendingAudio, _levelAudio;
-  final AudioPlayer _criticallyCloseChirpAudio;
-  final AudioPlayer _withinAudio;
-  final AudioPlayer _pointAudio;
+  final AudioPlayer _trafficAudio = AudioPlayer();
+  final AudioPlayer _bogeyAudio = AudioPlayer();
+  final AudioPlayer _closingInAudio = AudioPlayer();
+  final AudioPlayer _overAudio = AudioPlayer();
+  final AudioPlayer _lowAudio = AudioPlayer(), _highAudio = AudioPlayer(), _sameAltitudeAudio = AudioPlayer();
+  final AudioPlayer _oClockAudio = AudioPlayer();
+  final List<AudioPlayer> _twentiesToNinetiesAudios = [];
+  final AudioPlayer _hundredAudio = AudioPlayer(), _thousandAudio = AudioPlayer();
+  final AudioPlayer _atAudio = AudioPlayer();
+  final List<AudioPlayer> _alphabetAudios = [];
+  final List<AudioPlayer> _numberAudios = [];
+  final AudioPlayer _secondsAudio = AudioPlayer();
+  final AudioPlayer _milesAudio = AudioPlayer();
+  final AudioPlayer _climbingAudio = AudioPlayer(), _descendingAudio = AudioPlayer(), _levelAudio = AudioPlayer();
+  final AudioPlayer _criticallyCloseChirpAudio = AudioPlayer();
+  final AudioPlayer _withinAudio = AudioPlayer();
+  final AudioPlayer _pointAudio = AudioPlayer();
 
-  final List<_AlertItem> _alertQueue;
-  final Map<String,String> _lastTrafficPositionUpdateTimeMap;
-  final Map<String,int> _lastTrafficAlertTimeMap;
-  final List<String> _phoneticAlphaIcaoSequenceQueue;
+  final List<_AlertItem> _alertQueue = [];
+  final Map<String,String> _lastTrafficPositionUpdateTimeMap = {};
+  final Map<String,int> _lastTrafficAlertTimeMap =  {};
+  final List<String> _phoneticAlphaIcaoSequenceQueue = [];
 
   bool prefIsAudibleGroundAlertsEnabled = true;
   bool prefVerticalAttitudeCallout = false;
-  DistanceCalloutOption prefDistanceCalloutOption = DistanceCalloutOption.NONE;
-  NumberFormatOption prefNumberFormatOption = NumberFormatOption.COLLOQUIAL;
-  TrafficIdOption prefTrafficIdOption = TrafficIdOption.NONE;
+  DistanceCalloutOption prefDistanceCalloutOption = DistanceCalloutOption.none;
+  NumberFormatOption prefNumberFormatOption = NumberFormatOption.colloquial;
+  TrafficIdOption prefTrafficIdOption = TrafficIdOption.none;
   bool prefTopGunDorkMode = false;
   int prefAudibleTrafficAlertsMinSpeed = 0;
   int prefAudibleTrafficAlertsDistanceMinimum = 10;
@@ -95,15 +95,7 @@ class AudibleTrafficAlerts {
     _instance = null;
   }
 
-  AudibleTrafficAlerts._privateConstructor()
-    : _alertQueue = [], _lastTrafficPositionUpdateTimeMap = {}, _lastTrafficAlertTimeMap = {}, _phoneticAlphaIcaoSequenceQueue = [],
-    _audioCache = AudioCache(prefix: "assets/audio/traffic_alerts/"),
-    _trafficAudio = AudioPlayer(), _bogeyAudio = AudioPlayer(), _closingInAudio = AudioPlayer(), _overAudio = AudioPlayer(), 
-    _lowAudio = AudioPlayer(), _highAudio = AudioPlayer(), _sameAltitudeAudio = AudioPlayer(), _oClockAudio = AudioPlayer(), 
-    _twentiesToNinetiesAudios = [], _hundredAudio = AudioPlayer(), _thousandAudio = AudioPlayer(), _atAudio = AudioPlayer(), 
-    _alphabetAudios = [], _numberAudios = [], _secondsAudio = AudioPlayer(), _milesAudio = AudioPlayer(), _climbingAudio = AudioPlayer(), 
-    _descendingAudio = AudioPlayer(), _levelAudio = AudioPlayer(), _criticallyCloseChirpAudio = AudioPlayer(), _withinAudio = AudioPlayer(), 
-    _pointAudio = AudioPlayer();
+  AudibleTrafficAlerts._privateConstructor();
 
   Future<void> _destroy() async {
     await _audioCache.clearAll();
@@ -303,11 +295,9 @@ class AudibleTrafficAlerts {
   }
 
 
-  /**
-   * Construct sound sequence based on alert properties and preference configuration
-   * @param alert Alert item to build sound sequence for
-   * @return Sequence of sounds that represents the assembled alert
-   */
+  /// Construct sound sequence based on alert properties and preference configuration
+  /// @param alert Alert item to build sound sequence for
+  /// @return Sequence of sounds that represents the assembled alert
   List<AudioPlayer> _buildAlertSoundSequence(final _AlertItem alert) {
       final List<AudioPlayer> alertAudio = [];
       if (alert._closingEvent != null && alert._closingEvent._isCriticallyClose) {
@@ -315,10 +305,10 @@ class AudibleTrafficAlerts {
       }
       alertAudio.add(prefTopGunDorkMode ? _bogeyAudio : _trafficAudio);
       switch (prefTrafficIdOption) {
-          case TrafficIdOption.PHONETIC_ALPHA_ID:
+          case TrafficIdOption.phoneticAlphaId:
               _addPhoneticAlphaTrafficIdAudio(alertAudio, alert);
               break;
-          case TrafficIdOption.FULL_CALLSIGN:
+          case TrafficIdOption.fullCallsign:
               _addFullCallsignTrafficIdAudio(alertAudio, alert._traffic?.message.callSign);
           default:
       }
@@ -332,7 +322,7 @@ class AudibleTrafficAlerts {
       _addPositionAudio(alertAudio, clockHour, alert._altDiff);
       
       
-      if (prefDistanceCalloutOption != DistanceCalloutOption.NONE) {
+      if (prefDistanceCalloutOption != DistanceCalloutOption.none) {
           _addDistanceAudio(alertAudio, alert._distanceNmi);
       }
       
@@ -387,18 +377,16 @@ class AudibleTrafficAlerts {
   }  
 
   void _addDistanceAudio(List<AudioPlayer> alertAudio, double distance) {
-      _addNumericalAlertAudio(alertAudio, distance, prefDistanceCalloutOption == DistanceCalloutOption.DECIMAL);
+      _addNumericalAlertAudio(alertAudio, distance, prefDistanceCalloutOption == DistanceCalloutOption.decimal);
       alertAudio.add(_milesAudio);
   }  
 
-  /**
-   * Inject an individual digit audio alert sound sequence (1,032 ==> "one-zero-three-two")
-   * @param alertAudio Existing audio list to add numeric value to
-   * @param numeric Numeric value to speak into alert audio
-   * @param doDecimal Whether to speak 1st decimal into alert (false ==> rounded to whole #)
-   */
+  /// Inject an individual digit audio alert sound sequence (1,032 ==> "one-zero-three-two")
+  /// @param alertAudio Existing audio list to add numeric value to
+  /// @param numeric Numeric value to speak into alert audio
+  /// @param doDecimal Whether to speak 1st decimal into alert (false ==> rounded to whole #)
   void _addNumericalAlertAudio(List<AudioPlayer> alertAudio, double numeric, bool doDecimal) {
-      if (prefNumberFormatOption == NumberFormatOption.COLLOQUIAL) {
+      if (prefNumberFormatOption == NumberFormatOption.colloquial) {
           _addColloquialNumericBaseAlertAudio(alertAudio, doDecimal ? numeric : numeric.round() * 1.0);
       } else {
           _addNumberSequenceNumericBaseAlertAudio(alertAudio, doDecimal ? numeric : numeric.round() * 1.0);
@@ -409,11 +397,9 @@ class AudibleTrafficAlerts {
       }
   }
 
-  /**
-   * Speak a number in digit-by-digit format (1962 ==> "one nine six two")
-   * @param alertAudio List of sounds to append to
-   * @param numeric Numeric value to speak into alertAudio
-   */
+  /// Speak a number in digit-by-digit format (1962 ==> "one nine six two")
+  /// @param alertAudio List of sounds to append to
+  /// @param numeric Numeric value to speak into alertAudio
   void _addNumberSequenceNumericBaseAlertAudio(List<AudioPlayer> alertAudio, double numeric) {
       double curNumeric = numeric;    // iteration variable for digit processing
       for (int i = max(numerics.log10(numeric).floor(), 0); i >= 0; i--) {
@@ -427,11 +413,9 @@ class AudibleTrafficAlerts {
       }
   }
 
-  /**
-   * Speak a number in colloquial format (1962 ==> "one thousand nine hundred sixty-two")
-   * @param alertAudio List of sounds to append to
-   * @param numeric Numeric value to speak into alertAudio
-   */
+  /// Speak a number in colloquial format (1962 ==> "one thousand nine hundred sixty-two")
+  /// @param alertAudio List of sounds to append to
+  /// @param numeric Numeric value to speak into alertAudio
   void _addColloquialNumericBaseAlertAudio(List<AudioPlayer> alertAudio, double numeric) {
     final double log10Val = numerics.log10(numeric);
     for (int i = max(log10Val.isInfinite || log10Val.isNaN ? -1 : log10Val.round(), 0); i >= 0; i--) {
@@ -479,7 +463,7 @@ class AudibleTrafficAlerts {
 
   void _addTimeToClosestPointOfApproachAudio(List<AudioPlayer> alertAudio, _ClosingEvent closingEvent) {
       if (_addClosingSecondsAudio(alertAudio, closingEvent.closingSeconds())) {
-          if (prefDistanceCalloutOption != DistanceCalloutOption.NONE) {
+          if (prefDistanceCalloutOption != DistanceCalloutOption.none) {
               alertAudio.add(_withinAudio);
               _addDistanceAudio(alertAudio, closingEvent._closestApproachDistanceNmi);
           }

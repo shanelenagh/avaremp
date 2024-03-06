@@ -70,11 +70,16 @@ class AudibleTrafficAlerts {
 
   bool _isRunning = false;
   bool _isPlaying = false;
+  static bool _isShuttingDown = false;
 
-  final Completer<AudibleTrafficAlerts> _completer = Completer();
+  final Completer<AudibleTrafficAlerts> _startupCompleter = Completer();
+  static Completer<void>? _shutdownCompleter;
 
 
   static Future<AudibleTrafficAlerts?> getAndStartAudibleTrafficAlerts(double playRate) async {
+    if (_isShuttingDown) {
+      await _shutdownCompleter?.future;
+    }
     if (_instance == null) { 
       Logger.root.level = Level.INFO;
       Logger.root.onRecord.listen((record) {
@@ -84,24 +89,26 @@ class AudibleTrafficAlerts {
       _instance?._loadAudio(playRate).then((value) { 
         _log.info("Started audible traffic alerts. Settings: playRate=$playRate");
         _instance?._isRunning = true;
-        _instance?._completer.complete(_instance);
+        _instance?._startupCompleter.complete(_instance);
       });
     }
-    return _instance?._completer.future;
+    return _instance?._startupCompleter.future;
   }
 
   static Future<void> stopAudibleTrafficAlerts() async {
-    if (_instance == null) {
+    if (_instance == null || _isShuttingDown) {
       return;
     }
+    _isShuttingDown = true;
     _instance?._isRunning = false;
-    final Completer<void> completer = Completer();
+    _shutdownCompleter = Completer();
     _instance?._destroy().then((value) {
       _instance = null;
       _log.info("Stopped audible traffic alerts");
-      completer.complete();
+      _isShuttingDown = false;
+      _shutdownCompleter?.complete();
     });
-    return completer.future;
+    return _shutdownCompleter?.future;
   }
 
   AudibleTrafficAlerts._privateConstructor();

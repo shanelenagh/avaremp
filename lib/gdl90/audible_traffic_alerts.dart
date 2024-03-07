@@ -1,12 +1,13 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:audioplayers/audioplayers.dart';
-import 'package:avaremp/gdl90/traffic_cache.dart';
 import 'package:geolocator/geolocator.dart';
-import 'dart:math';
 import 'package:dart_numerics/dart_numerics.dart' as numerics;
-import 'package:logging/logging.dart';
 import 'package:vector_math/vector_math.dart';
+import 'package:logging/logging.dart';
+
+import 'package:avaremp/gdl90/traffic_cache.dart';
 
 
 enum TrafficIdOption { phoneticAlphaId, fullCallsign, none }

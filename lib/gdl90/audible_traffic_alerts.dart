@@ -151,7 +151,8 @@ class AudibleTrafficAlerts {
     }
     player.audioCache = _audioCache;
     futures.add(player.setSource(AssetSource(assetSourceName)));
-    futures.add(player.setPlayerMode(PlayerMode.lowLatency));   
+    //futures.add(player.setPlayerMode(PlayerMode.lowLatency));   // TODO: Blows up on android, darnit
+    futures.add(player.setReleaseMode(ReleaseMode.stop));
     futures.add(player.setPlaybackRate(playRate));
     return Future.wait(futures); 
   }
@@ -315,6 +316,9 @@ class AudibleTrafficAlerts {
         _isPlaying = true;
         _alertQueue.removeAt(i);
         _AudioSequencePlayer(_buildAlertSoundSequence(nextAlert)).playAudioSequence().then((value) { 
+          if (_log.level <= Level.FINE) { // Preventing unnecessary string interpolcation of log message, per log level
+            _log.fine("Queue processing: Done saying alert ${_getTrafficKey(nextAlert._traffic)} in iteration $i with queue size ${_alertQueue.length}");
+          }
           _isPlaying = false;
           if (_alertQueue.isNotEmpty) {
             Future.delayed(Duration(milliseconds: (_alertQueue[0]._closingEvent?._isCriticallyClose ?? false) ? 0 

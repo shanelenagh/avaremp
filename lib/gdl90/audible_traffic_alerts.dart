@@ -355,6 +355,9 @@ class AudibleTrafficAlerts {
       final int clockHour = _nearestClockHourFromHeadingAndLocations(alert._ownLocation?.latitude??0,
 										alert._ownLocation?.longitude??0, alert._traffic?.message.coordinates.latitude??0, 
                     alert._traffic?.message.coordinates.longitude??0, alert._ownLocation?.heading??0);
+      if (_log.level <= Level.FINE) { // Preventing unnecessary string interpolcation of log message, per log level
+        _log.fine("Building audio: Alert [$alert] at $clockHour o'clock");
+      }      
       _addPositionAudio(alertAudio, clockHour, alert._altDiff);
       
       

@@ -168,6 +168,7 @@ class AudibleTrafficAlerts {
     }
 
     bool hasInserts = false;
+    final List<int> unqualifiedIcaos = [];
     for (final traffic in trafficList) {
       if (traffic == null || traffic.message.icao == ownIcao || !(traffic.message.airborne || prefIsAudibleGroundAlertsEnabled)) {      
         if (_log.level <= Level.FINER) { // Preventing unnecessary string interpolcation of log message, per log level
@@ -198,11 +199,16 @@ class AudibleTrafficAlerts {
               : null
             , curDistance, altDiff)
         );      
-      } else if (_log.level <= Level.FINER) {
-        _log.finer("Traffic [$trafficKey] didn't make the cut, with alt diff=$altDiff and distance=$curDistance");
+      } else {
+        if (_log.level <= Level.FINER) {
+          _log.finer("Traffic [$trafficKey] didn't make the cut, with alt diff=$altDiff and distance=$curDistance");
+        }
+        unqualifiedIcaos.add(traffic.message.icao);
       }
       _lastTrafficPositionUpdateTimeMap[trafficKey] = trafficPositionTimeCalcUpdateValue;
     }  
+    // Prune out alerts that no longer qualify (e.g., distance exceeded before able to process/speak)
+    _alertQueue.removeWhere((element) => unqualifiedIcaos.contains(element._traffic?.message.icao));
 
     if (hasInserts) {
       scheduleMicrotask(runAudibleAlertsQueueProcessing);

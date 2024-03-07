@@ -175,7 +175,7 @@ class Storage {
             trafficCache.ownshipLocation = p;
             trafficCache.ownshipVspeed = m.verticalSpeed;
             trafficCache.ownshipIcao = m.icao;
-            trafficCache.ownshipIsAirborne = m.isAirborne;
+            trafficCache.ownshipIsAirborne = m.airborne;
           }
           if(m != null && m is TrafficReportMessage) {
             trafficCache.putTraffic(m);

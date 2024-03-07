@@ -168,7 +168,6 @@ class AudibleTrafficAlerts {
     }
 
     bool hasInserts = false;
-    final List<int> unqualifiedIcaos = [];
     for (final traffic in trafficList) {
       if (traffic == null || traffic.message.icao == ownIcao || !(traffic.message.airborne || prefIsAudibleGroundAlertsEnabled)) {      
         if (_log.level <= Level.FINER) { // Preventing unnecessary string interpolcation of log message, per log level
@@ -184,7 +183,7 @@ class AudibleTrafficAlerts {
       double curDistance = _kMaxIntValue*1.0;
       if (_log.level <= Level.FINER) { // Preventing unnecessary string interpolcation of log message, per log level
         _log.finer("Processing [$trafficKey], which has previous update times of $lastTrafficPositionUpdateValue");
-      }       
+      }    
       // Ensure traffic has been recently updated, and if within the alerts threshold "cylinder", upsert it to the alert queue   
       if ((hasUpdate = lastTrafficPositionUpdateValue == null || lastTrafficPositionUpdateValue != trafficPositionTimeCalcUpdateValue)
         && altDiff.abs() < prefTrafficAlertsHeight
@@ -215,7 +214,7 @@ class AudibleTrafficAlerts {
         });
       }
       _lastTrafficPositionUpdateTimeMap[trafficKey] = trafficPositionTimeCalcUpdateValue;
-    }  
+    } 
 
     if (hasInserts) {
       scheduleMicrotask(runAudibleAlertsQueueProcessing);
@@ -229,22 +228,31 @@ class AudibleTrafficAlerts {
         _log.fine("Adding [$alert] to the queue with current size ${_alertQueue.length}");
       }       
       // If this is a "critically close" alert, put it ahead of the first non-critically close alert
-      final int alertQueueSize;
-      if (alert._closingEvent != null && alert._closingEvent._isCriticallyClose && (alertQueueSize = _alertQueue.length) > 0) {
-        for (int i = 0; i < alertQueueSize; i++) {
-          final _AlertItem curAlert = _alertQueue[i];
-          if (curAlert._closingEvent == null || !curAlert._closingEvent._isCriticallyClose) {
-            _alertQueue.insert(i, alert);
-            return true;
-          }
-        }
+      if ((alert._closingEvent?._isCriticallyClose ?? false) && _alertQueue.isNotEmpty) {
+        final int lowestNonCEIndex = _alertQueue.indexWhere((element) => !(element._closingEvent?._isCriticallyClose ?? false));
+        _alertQueue.insert(lowestNonCEIndex, alert);
+        return true;
       }
+      // ..otherwise, if this is just a normal alert, or it is andall others are also critical, put it at the back of the queue
       _alertQueue.add(alert);
       return true;
     } else {
       if (_log.level <= Level.FINE) { // Preventing unnecessary string interpolcation of log message, per log level
         _log.fine("Updating [$alert] to the queue with current size ${_alertQueue.length} at position $existingIndex");
-      }         
+      }     
+      // If this old alert that wasn't critically close before is now --> move it to the first non-critical spot
+      if ((alert._closingEvent?._isCriticallyClose ?? false) && !(_alertQueue[existingIndex]._closingEvent?._isCriticallyClose ?? false)) {
+        final int lowestNonCEIndex = _alertQueue.indexWhere((element) => !(element._closingEvent?._isCriticallyClose ?? false));
+        if (lowestNonCEIndex < existingIndex) { // Ensures there is some benefit, and we aren't shifting/borking indexes
+          if (_log.level <= Level.FINE) { // Preventing unnecessary string interpolcation of log message, per log level
+              _log.fine("Moving (now) closing event alert [$alert] up from index $existingIndex to $lowestNonCEIndex");
+          }  
+          _alertQueue.removeAt(existingIndex);
+          _alertQueue.insert(lowestNonCEIndex, alert);
+          return false;
+        }        
+      } 
+      // If you got here, either this one isn't critical now, or all other alerts are closing events too
       _alertQueue[existingIndex] = alert;
     }
     return false;
@@ -627,7 +635,7 @@ class _AlertItem {
 
   @override
   String toString() {
-    return "[${AudibleTrafficAlerts._getTrafficKey(_traffic)}]: ${_distanceNmi}nmi, altdiff=$_altDiff, ce=[$_closingEvent]";
+    return "[${AudibleTrafficAlerts._getTrafficKey(_traffic)}]: dist=${_distanceNmi}nmi, altdiff=$_altDiff, ce=[$_closingEvent]";
   }
 }
 

@@ -57,7 +57,7 @@ class AudibleTrafficAlerts {
   TrafficIdOption prefTrafficIdOption = TrafficIdOption.none;
   bool prefTopGunDorkMode = false;
   int prefAudibleTrafficAlertsMinSpeed = 0;
-  int prefAudibleTrafficAlertsDistanceMinimum = 10;
+  int prefAudibleTrafficAlertsDistanceMinimum = 5;
   double prefTrafficAlertsHeight = 1000;
   int prefMaxAlertFrequencySeconds = 15;
   int prefTimeBetweenAnyAlertMs = 750;

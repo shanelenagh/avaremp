@@ -180,11 +180,13 @@ class AudibleTrafficAlerts {
 			final String trafficPositionTimeCalcUpdateValue = "${traffic.message.time.millisecondsSinceEpoch}_${ownshipUpdateTime?.millisecondsSinceEpoch}";
 			final String trafficKey = _getTrafficKey(traffic);  
       final String? lastTrafficPositionUpdateValue = _lastTrafficPositionUpdateTimeMap[trafficKey];
+      final bool hasUpdate;
       double curDistance = _kMaxIntValue*1.0;
       if (_log.level <= Level.FINER) { // Preventing unnecessary string interpolcation of log message, per log level
         _log.finer("Processing [$trafficKey], which has previous update times of $lastTrafficPositionUpdateValue");
       }       
-      if ((lastTrafficPositionUpdateValue == null || lastTrafficPositionUpdateValue != trafficPositionTimeCalcUpdateValue)
+      // Ensure traffic has been recently updated, and if within the alerts threshold "cylinder", upsert it to the alert queue   
+      if ((hasUpdate = lastTrafficPositionUpdateValue == null || lastTrafficPositionUpdateValue != trafficPositionTimeCalcUpdateValue)
         && altDiff.abs() < prefTrafficAlertsHeight
         && (curDistance = _greatCircleDistanceNmi(ownshipLocation.latitude, ownshipLocation.longitude,
           traffic.message.coordinates.latitude, traffic.message.coordinates.longitude)) < prefAudibleTrafficAlertsDistanceMinimum
@@ -199,16 +201,21 @@ class AudibleTrafficAlerts {
               : null
             , curDistance, altDiff)
         );      
-      } else {
+      } else if (hasUpdate) {
+        // Prune out any alert for this traffic that no longer qualifies (e.g., distance exceeded before able to process/speak)
         if (_log.level <= Level.FINER) {
           _log.finer("Traffic [$trafficKey] didn't make the cut, with alt diff=$altDiff and distance=$curDistance");
         }
-        unqualifiedIcaos.add(traffic.message.icao);
+        _alertQueue.removeWhere((element) { 
+          final bool removeObsoleteAlert = element._traffic?.message.icao == traffic.message.icao; 
+          if (removeObsoleteAlert && _log.level <= Level.FINE) { // Preventing unnecessary string interpolcation of log message, per log level
+            _log.fine("Removing obsolete [altdiff=$altDiff, distance=$curDistance] alert: [$element] with queue size ${_alertQueue.length}");
+          }
+          return removeObsoleteAlert;
+        });
       }
       _lastTrafficPositionUpdateTimeMap[trafficKey] = trafficPositionTimeCalcUpdateValue;
     }  
-    // Prune out alerts that no longer qualify (e.g., distance exceeded before able to process/speak)
-    _alertQueue.removeWhere((element) => unqualifiedIcaos.contains(element._traffic?.message.icao));
 
     if (hasInserts) {
       scheduleMicrotask(runAudibleAlertsQueueProcessing);

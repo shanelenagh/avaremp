@@ -9,6 +9,8 @@ import 'package:logging/logging.dart';
 
 import 'package:avaremp/gdl90/traffic_cache.dart';
 
+import 'package:flutter/material.dart';
+
 
 enum TrafficIdOption { phoneticAlphaId, fullCallsign, none }
 enum DistanceCalloutOption { none, rounded, decimal }
@@ -59,7 +61,7 @@ class AudibleTrafficAlerts {
   bool prefTopGunDorkMode = false;
   int prefAudibleTrafficAlertsMinSpeed = 0;
   int prefAudibleTrafficAlertsDistanceMinimum = 5;
-  double prefTrafficAlertsHeight = 1000;
+  double prefTrafficAlertsHeight = 4000;
   int prefMaxAlertFrequencySeconds = 15;
   int prefTimeBetweenAnyAlertMs = 750;
 
@@ -77,7 +79,7 @@ class AudibleTrafficAlerts {
 
   static Future<AudibleTrafficAlerts?> getAndStartAudibleTrafficAlerts(double playRate) async {
     if (_instance == null) { 
-      Logger.root.level = Level.INFO;
+      Logger.root.level = Level.SHOUT;
       Logger.root.onRecord.listen((record) {
         print('${record.time} ${record.level.name} [${record.loggerName}] - ${record.message}');
       });      
@@ -113,6 +115,7 @@ class AudibleTrafficAlerts {
   AudibleTrafficAlerts._privateConstructor();
 
   Future<List<dynamic>> _loadAudio(double playRate, bool loadCache) async {
+    _log.shout("starting audio load");
     final singleAudioMap = { 
       _trafficAudio: "tr_traffic.mp3", _bogeyAudio: "tr_bogey.mp3", _closingInAudio: "tr_cl_closingin.mp3", _overAudio: "tr_cl_over.mp3",
       _lowAudio: "tr_low.mp3", _highAudio: "tr_high.mp3", _sameAltitudeAudio: "tr_same_altitude.mp3", _oClockAudio: "tr_oclock.mp3",
@@ -144,17 +147,25 @@ class AudibleTrafficAlerts {
     return Future.wait(futures);
   }
 
-  Future<List<dynamic>> _populateAudio(AudioPlayer player, String assetSourceName, double playRate, bool loadCache) async {
-    final List<Future> futures = [];
-    if (loadCache) {
-      futures.add(_audioCache.load(assetSourceName));
-    }
-    player.audioCache = _audioCache;
-    futures.add(player.setSource(AssetSource(assetSourceName)));
-    //futures.add(player.setPlayerMode(PlayerMode.lowLatency));   // TODO: Blows up on android, darnit
-    futures.add(player.setReleaseMode(ReleaseMode.stop));
-    futures.add(player.setPlaybackRate(playRate));
-    return Future.wait(futures); 
+  Future<void> _populateAudio(AudioPlayer player, String assetSourceName, double playRate, bool loadCache) async {
+    return Future<void>.sync(() async {
+      _log.shout("started loading $assetSourceName");
+      if (loadCache) {
+        await _audioCache.load(assetSourceName);
+      }
+      player.audioCache = _audioCache;
+      await player.setSource(AssetSource(assetSourceName));
+      await player.setPlayerMode(PlayerMode.lowLatency);   // TODO: Blows up on android, darnit
+      await player.setReleaseMode(ReleaseMode.stop);
+      await player.setPlaybackRate(playRate);
+      player.onLog.listen((event) {
+        _log.shout("player ${player.source} log event: $event");
+      });
+      player.onPlayerStateChanged.listen((event) {
+        _log.shout("player ${player.source} state change event: $event");
+      });
+      _log.shout("done loading $assetSourceName");
+    });
   }
 
   void processTrafficForAudibleAlerts(List<Traffic?> trafficList, Position? ownshipLocation, DateTime? ownshipUpdateTime, 
@@ -657,21 +668,130 @@ class _AudioSequencePlayer {
   _AudioSequencePlayer(List<AudioPlayer?> audioPlayers) 
     : _audioPlayers = audioPlayers, assert(audioPlayers.isNotEmpty)
   {
-    _lastAudioPlayerSubscription = _audioPlayers[0]?.onPlayerComplete.listen(_handleNextSeqAudio);      
+    _lastAudioPlayerSubscription = _audioPlayers[0]?.onPlayerComplete.listen((event) {
+      _handleNextSeqAudio();
+    });      
   }
 
-  void _handleNextSeqAudio(event) {
-    _lastAudioPlayerSubscription?.cancel();
+  void _handleNextSeqAudio() async {
+    
+    AudibleTrafficAlerts._log.shout("Handling next seq at # $_seqIndex");
+    await _lastAudioPlayerSubscription?.cancel();
     if (_seqIndex < _audioPlayers.length) {
-      _lastAudioPlayerSubscription = _audioPlayers[_seqIndex]?.onPlayerComplete.listen(_handleNextSeqAudio);
-      _audioPlayers[_seqIndex++]?.resume();
-    } else {        
+      AudibleTrafficAlerts._log.shout("stopping prev at seq $_seqIndex source ${_audioPlayers[_seqIndex]?.source}");
+      await _audioPlayers[_seqIndex-1]?.stop();
+      _lastAudioPlayerSubscription = _audioPlayers[_seqIndex]?.onPlayerComplete.listen((event) { _handleNextSeqAudio(); });
+      AudibleTrafficAlerts._log.shout("Calling neext resume at seq $_seqIndex");
+      await _audioPlayers[_seqIndex++]?.resume();
+      AudibleTrafficAlerts._log.shout("called next resume at seq $_seqIndex");
+    } else {       
+      AudibleTrafficAlerts._log.shout("Calling complete on sequence"); 
       _completer.complete();
+      AudibleTrafficAlerts._log.shout("Called complete on sequence"); 
     }
   }
 
-  Future<void> playAudioSequence() {
-    _audioPlayers[_seqIndex++]?.resume();
+  Future<void> playAudioSequence() async {
+    AudibleTrafficAlerts._log.shout("Starint seq resume");
+    await _audioPlayers[_seqIndex++]?.resume();
+    AudibleTrafficAlerts._log.shout("Called seq first resume");
     return _completer.future;
+  }
+}
+
+
+
+
+
+
+
+const double _kPlayRate = 1;
+
+void _log(String msg) {
+  print("${DateTime.now().millisecondsSinceEpoch}: $msg");
+}
+
+void main() {
+  runApp(const MainApp());
+}
+
+class MainApp extends StatefulWidget {
+  const MainApp({super.key});
+  
+  @override
+  MainAppState createState() => MainAppState();
+}
+
+class MainAppState extends State<MainApp> {
+
+  AudioPlayer _chirpPlayer = new AudioPlayer();
+  AudioPlayer _bogeyPlayer = new AudioPlayer();
+  int i = 0;
+  AudibleTrafficAlerts? aa;
+
+  @override
+  void initState() {
+    super.initState();
+  
+    // AudioCache cache = AudioCache(prefix:  "assets/audio/traffic_alerts/");
+    // cache.loadAll([ "tr_cl_chirp.mp3", "tr_bogey.mp3" ]).then((value) {
+    //   _log("CACHE LOADED");
+    //   _chirpPlayer.audioCache = cache;
+    //   _bogeyPlayer.audioCache = cache;
+    //   _chirpPlayer.setSourceAsset("tr_cl_chirp.mp3").then((value) {
+    //     _log("chirp source set");
+    //     _chirpPlayer.setPlaybackRate(_kPlayRate).then((value) {
+    //       _log("chirp set rate");
+    //     });
+    //   });
+    //   _bogeyPlayer.setSourceAsset("tr_bogey.mp3").then((value) {
+    //     _log("bogey source set");
+    //     _chirpPlayer.setPlaybackRate(_kPlayRate).then((value) {
+    //       _log("bogey set rate");
+    //     });        
+    //   });
+    // });
+    AudibleTrafficAlerts.getAndStartAudibleTrafficAlerts(_kPlayRate).then((value) => aa = value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        body: const Center(
+          child: Text("Play audio by pushing button below")
+        ),
+        floatingActionButton: FloatingActionButton(
+          onPressed: playIt2,
+          child: const Text("Play Audio")
+        ),
+      ),
+    );
+  }
+
+  void playIt() async {
+    // late StreamSubscription sub;
+    // sub =_chirpPlayer.onPlayerComplete.listen((event) async {
+    //   _log("chrip done ${i++}");
+    //   sub.cancel();
+    //   _bogeyPlayer.resume();
+    // });
+    // _log("starting chirp");
+    // _chirpPlayer.resume();
+    await _AudioSequencePlayer([ aa?._bogeyAudio, aa?._atAudio, aa?._numberAudios[1], aa?._oClockAudio, aa?._highAudio ]).playAudioSequence();
+  }
+
+  void playIt2() async {
+    aa?._bogeyAudio.onPlayerComplete.listen((event) {
+      _log("finished bogey ${i++}");
+      aa?._atAudio.onPlayerComplete.listen((event) {
+        _log("finished at ${i++}");
+        aa?._numberAudios[1].resume();
+      });
+      aa?._atAudio.resume();
+    });
+    aa?._bogeyAudio.resume();
+    //await aa?._atAudio.play(AssetSource("tr_at.mp3"));
+    //await aa?._numberAudios[1].play(AssetSource("tr_01.mp3"));
   }
 }

@@ -25,7 +25,7 @@
             "name": "audible_alert_testing",
             "request": "launch",
             "type": "dart",
-            "program": "lib/gdl90/main.dart"
+            "program": "lib/gdl90/audible_traffic_alerts.dart"
         }        
     ]
 }

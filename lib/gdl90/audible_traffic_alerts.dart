@@ -700,6 +700,55 @@ class _AudioSequencePlayer {
 }
 
 
+class _AudioSequencePlayer2 {
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  Completer<void>? _completer;
+  final AudioCache _cache;
+  int _startTime = 0;
+  List<AssetSource> _audios = [];
+  int _seqNum = 0;
+
+  _AudioSequencePlayer2(String cacheAudioDirectory, [double? playRate]) 
+    : _cache = AudioCache(prefix: cacheAudioDirectory)
+  {
+    _audioPlayer.onPlayerComplete.listen(_handleNextSeqAudio);
+    _audioPlayer.audioCache = _cache;
+    _audioPlayer.setReleaseMode(ReleaseMode.stop);
+    //_audioPlayer.setPlayerMode(PlayerMode.lowLatency);
+    if (playRate != null) {
+      _audioPlayer.setPlaybackRate(playRate);
+    }
+  }
+
+  void _handleNextSeqAudio(event) {
+    if (_seqNum < _audios.length) {
+      _audioPlayer.play(_audios[_seqNum++]);
+    } else {
+      _log("Played sequence in ${DateTime.now().millisecondsSinceEpoch-_startTime}ms");
+      _completer?.complete();
+      _completer = null;
+    }
+  }
+
+  Future<List<Uri>> preCacheAudioAssets(List<AssetSource> assets) {
+    List<String> fileNames = assets.map((e) => e.path).toList();
+    return _cache.loadAll(fileNames);
+  }
+
+  Future<void>? playAudioSequence(List<AssetSource> audioSources) {
+    if (_completer != null) {
+      throw "Illegal state: audio sequence play currently in progress";
+    }
+    if (audioSources.isEmpty) {
+      throw "Invalid argument: audio sources list is empty";
+    }
+    _audios = audioSources;
+    _startTime = DateTime.now().millisecondsSinceEpoch;
+    _audioPlayer.play(_audios[_seqNum++]);
+    _completer = Completer();
+    return _completer?.future;
+  }
+}
 
 
 
@@ -728,6 +777,9 @@ class MainAppState extends State<MainApp> {
   AudioPlayer _bogeyPlayer = new AudioPlayer();
   int i = 0;
   AudibleTrafficAlerts? aa;
+  AssetSource _chirpAudioAsset = AssetSource("tr_cl_chirp.mp3");
+  AssetSource _bogeyAudioAsset = AssetSource("tr_bogey.mp3");
+
 
   @override
   void initState() {
@@ -762,7 +814,7 @@ class MainAppState extends State<MainApp> {
           child: Text("Play audio by pushing button below")
         ),
         floatingActionButton: FloatingActionButton(
-          onPressed: playIt2,
+          onPressed: playIt3,
           child: const Text("Play Audio")
         ),
       ),
@@ -793,5 +845,11 @@ class MainAppState extends State<MainApp> {
     aa?._bogeyAudio.resume();
     //await aa?._atAudio.play(AssetSource("tr_at.mp3"));
     //await aa?._numberAudios[1].play(AssetSource("tr_01.mp3"));
+  }
+
+  void playIt3() {
+    _AudioSequencePlayer2 sPlayer = _AudioSequencePlayer2("assets/audio/traffic_alerts/", 1.75);
+    sPlayer.preCacheAudioAssets([ _chirpAudioAsset, _bogeyAudioAsset ]);
+    sPlayer.playAudioSequence([ _chirpAudioAsset, _bogeyAudioAsset ]);
   }
 }

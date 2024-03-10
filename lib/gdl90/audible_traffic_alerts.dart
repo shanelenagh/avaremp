@@ -713,9 +713,10 @@ class _AudioSequencePlayer2 {
   {
     _audioPlayer.onPlayerComplete.listen(_handleNextSeqAudio);
     _audioPlayer.audioCache = _cache;
-    _audioPlayer.setReleaseMode(ReleaseMode.stop);
+    //_audioPlayer.setReleaseMode(ReleaseMode.stop);
     //_audioPlayer.setPlayerMode(PlayerMode.lowLatency);
     if (playRate != null) {
+      _log("setting play rate $playRate");
       _audioPlayer.setPlaybackRate(playRate);
     }
   }
@@ -745,6 +746,7 @@ class _AudioSequencePlayer2 {
     _audios = audioSources;
     _startTime = DateTime.now().millisecondsSinceEpoch;
     _audioPlayer.play(_audios[_seqNum++]);
+    //_audioPlayer.resume();
     _completer = Completer();
     return _completer?.future;
   }
@@ -773,37 +775,14 @@ class MainApp extends StatefulWidget {
 
 class MainAppState extends State<MainApp> {
 
-  AudioPlayer _chirpPlayer = new AudioPlayer();
-  AudioPlayer _bogeyPlayer = new AudioPlayer();
-  int i = 0;
-  AudibleTrafficAlerts? aa;
   AssetSource _chirpAudioAsset = AssetSource("tr_cl_chirp.mp3");
   AssetSource _bogeyAudioAsset = AssetSource("tr_bogey.mp3");
-
+  _AudioSequencePlayer2 sPlayer = _AudioSequencePlayer2("assets/audio/traffic_alerts/", 2);
 
   @override
   void initState() {
     super.initState();
   
-    // AudioCache cache = AudioCache(prefix:  "assets/audio/traffic_alerts/");
-    // cache.loadAll([ "tr_cl_chirp.mp3", "tr_bogey.mp3" ]).then((value) {
-    //   _log("CACHE LOADED");
-    //   _chirpPlayer.audioCache = cache;
-    //   _bogeyPlayer.audioCache = cache;
-    //   _chirpPlayer.setSourceAsset("tr_cl_chirp.mp3").then((value) {
-    //     _log("chirp source set");
-    //     _chirpPlayer.setPlaybackRate(_kPlayRate).then((value) {
-    //       _log("chirp set rate");
-    //     });
-    //   });
-    //   _bogeyPlayer.setSourceAsset("tr_bogey.mp3").then((value) {
-    //     _log("bogey source set");
-    //     _chirpPlayer.setPlaybackRate(_kPlayRate).then((value) {
-    //       _log("bogey set rate");
-    //     });        
-    //   });
-    // });
-    AudibleTrafficAlerts.getAndStartAudibleTrafficAlerts(_kPlayRate).then((value) => aa = value);
   }
 
   @override
@@ -821,35 +800,16 @@ class MainAppState extends State<MainApp> {
     );
   }
 
-  void playIt() async {
-    // late StreamSubscription sub;
-    // sub =_chirpPlayer.onPlayerComplete.listen((event) async {
-    //   _log("chrip done ${i++}");
-    //   sub.cancel();
-    //   _bogeyPlayer.resume();
-    // });
-    // _log("starting chirp");
-    // _chirpPlayer.resume();
-    await _AudioSequencePlayer([ aa?._bogeyAudio, aa?._atAudio, aa?._numberAudios[1], aa?._oClockAudio, aa?._highAudio ]).playAudioSequence();
-  }
-
-  void playIt2() async {
-    aa?._bogeyAudio.onPlayerComplete.listen((event) {
-      _log("finished bogey ${i++}");
-      aa?._atAudio.onPlayerComplete.listen((event) {
-        _log("finished at ${i++}");
-        aa?._numberAudios[1].resume();
-      });
-      aa?._atAudio.resume();
-    });
-    aa?._bogeyAudio.resume();
-    //await aa?._atAudio.play(AssetSource("tr_at.mp3"));
-    //await aa?._numberAudios[1].play(AssetSource("tr_01.mp3"));
-  }
-
-  void playIt3() {
-    _AudioSequencePlayer2 sPlayer = _AudioSequencePlayer2("assets/audio/traffic_alerts/", 1.75);
-    sPlayer.preCacheAudioAssets([ _chirpAudioAsset, _bogeyAudioAsset ]);
-    sPlayer.playAudioSequence([ _chirpAudioAsset, _bogeyAudioAsset ]);
+  void playIt3() async {
+    await sPlayer._audioPlayer.setPlaybackRate(2);
+    //sPlayer.preCacheAudioAssets([ _chirpAudioAsset, _bogeyAudioAsset ]);
+    //sPlayer.playAudioSequence([ _chirpAudioAsset, _bogeyAudioAsset ]);
+    //AudioPlayer a = AudioPlayer();
+    //a.audioCache = sPlayer._cache;
+    //a.setPlaybackRate(2);
+    //a.play(_chirpAudioAsset);
+      final player = AudioPlayer();
+      await player.setPlaybackRate(2);
+      await player.play(AssetSource("audio/traffic_alerts/tr_bogey.mp3"));
   }
 }

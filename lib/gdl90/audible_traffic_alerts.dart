@@ -637,15 +637,16 @@ class _AlertItem {
 class _AudioSequencePlayer {
   final AudioPlayer _audioPlayer = AudioPlayer();
   Completer<void>? _completer;
-  final AudioCache _cache;
+  static AudioCache? _cache;  // static singleton: brutal hack to get around Windows file locking issue with cache
   List<AssetSource> _audios = [];
   int _seqNum = 0;
 
   _AudioSequencePlayer(String cacheAudioDirectory) 
-    : _cache = AudioCache(prefix: cacheAudioDirectory)
   {
+    _cache ??= AudioCache(prefix: cacheAudioDirectory);  // static singleton: brutal hack to get around Windows file locking issue with cache
+    _audioPlayer.audioCache = _cache!;
     _audioPlayer.onPlayerComplete.listen(_handleNextSeqAudio);
-    _audioPlayer.audioCache = _cache;
+    
   }
 
   void _handleNextSeqAudio(event) {
@@ -658,8 +659,14 @@ class _AudioSequencePlayer {
   }
 
   Future<List<Uri>> preCacheAudioAssets(List<AssetSource> assets) {
+    if (_cache?.loadedFiles.isEmpty ?? false) {
     List<String> fileNames = assets.map((e) => e.path).toList();
-    return _cache.loadAll(fileNames);
+      return _cache!.loadAll(fileNames);
+    } else {
+      final Completer<List<Uri>> completer = Completer();
+      completer.complete([]);
+      return completer.future;
+    }
   }
 
   Future<void>? playAudioSequence(List<AssetSource> audioSources) {

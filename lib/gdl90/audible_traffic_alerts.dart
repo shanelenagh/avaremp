@@ -658,7 +658,6 @@ class _AudioSequencePlayer {
     if (_seqNum < _audios.length) {
       _playFlip();
     } else {
-      _log("Finished seq in ${DateTime.now().millisecondsSinceEpoch-_start}ms");
       _completer?.complete();
       _completer = null;
     }

@@ -1,7 +1,7 @@
 import 'package:avaremp/gdl90/product.dart';
 
 class NexradProduct extends Product {
-  NexradProduct(super.time, super.data);
+  NexradProduct(super.time, super.data, super.coordinate);
 
   static const int numRows = 4;
   static const int numCols = 32;

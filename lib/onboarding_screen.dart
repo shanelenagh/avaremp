@@ -51,28 +51,11 @@ class OnBoardingScreenState extends State<OnBoardingScreen> {
       bodyWidget: Column(
           children:[
             const Text("Make sure you are in an area where GPS signals are strong.\n\n"
-              "Select your source of GPS signal (Internal, External).\n"
-              "Internal GPS is easy to setup. It requires GPS permissions for the app, and increases battery consumption.\n"
-              "External GPS may additionally provide ADS-B signals."),
-            DropdownButton(
-              value: Storage().settings.isInternalGps()? "Internal" : "External",
-              items: const [
-                DropdownMenuItem(value: "Internal", child: Text("Internal")),
-                DropdownMenuItem(value: "External", child: Text("External"))
-              ],
-              onChanged: (value) {
-                setState(() {
-                  Storage().settings.setInternalGps(value == "Internal" ? true : false);
-                });
-              },
-            ),
-            if(!Storage().settings.isInternalGps())
-              const Text("Connect your external GPS/ADS-B receiver to UDP port 4000, 43211, or 49002.",),
-            if(Storage().settings.isInternalGps())
+              "The app uses the best possible GPS source available on this device.\n"
+              " 1) You must provide the app with permissions to access the GPS.\n"
+              " 2) You may connect your external GPS/ADS-B receiver to UDP port 4000, 43211, or 49002.\n"),
               Text("$gpsDeniedMessage\n$gpsEnabledMessage\n"),
-            if(Storage().settings.isInternalGps())
               Storage().gpsNotPermitted ? TextButton(onPressed: () { Geolocator.openAppSettings(); }, child: const Text("GPS Permissions"),) : Container(),
-            if(Storage().settings.isInternalGps())
               Storage().gpsDisabled ? TextButton(onPressed: () { Geolocator.openLocationSettings(); }, child: const Text("Enable GPS")) : Container(),
           ]
       ),
@@ -88,7 +71,7 @@ class OnBoardingScreenState extends State<OnBoardingScreen> {
       safeAreaList: const [false, false, true, false],
       pages: [
         PageViewModel(
-          title: "Welcome to AvareMP!",
+          title: "Welcome to AvareX!",
           body: "This introduction will show you the necessary steps to operate the app.",
           image: _buildFullscreenImage('intro.png'),
           decoration: pageDecoration,
@@ -103,6 +86,8 @@ class OnBoardingScreenState extends State<OnBoardingScreen> {
           bodyWidget: Column(children: [
             const Text(
                 """
+** YOU MUST SIGN THIS AGREEMENT TO CONTINUE. **
+
 This is not an FAA certified GPS. You must assume this software will fail when life and/or property are at risk. The authors of this software are not liable for any injuries to persons, or damages to aircraft or property including Android devices, related to its use.
 
 ** What Information We Collect **
@@ -161,6 +146,12 @@ Do you agree to ALL the above Terms, Conditions, and Privacy Policy? By clicking
           title: "Keep Warnings in Check",
           image: _buildImage('warning.png'),
           bodyWidget: const Text("Any time you see this red warning icon in the app, click on it for troubleshooting. The app may not work properly when this icon is visible."),
+          decoration: pageDecoration,
+        ),
+        PageViewModel(
+          title: "Turn off the Layers",
+          image: _buildImage('layers.png'),
+          bodyWidget: const Text("For optimum app performance, turn off unused layers."),
           decoration: pageDecoration,
         ),
         PageViewModel(

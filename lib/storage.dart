@@ -18,6 +18,7 @@ import 'package:avaremp/gdl90/traffic_report_message.dart';
 import 'package:avaremp/gdl90/uplink_message.dart';
 import 'package:avaremp/nmea/nmea_ownship_message.dart';
 import 'package:avaremp/path_utils.dart';
+import 'package:avaremp/pfd_painter.dart';
 import 'package:avaremp/plan_route.dart';
 import 'package:avaremp/stack_with_one.dart';
 import 'package:avaremp/weather/airep_cache.dart';
@@ -46,6 +47,7 @@ import 'destination.dart';
 import 'gdl90/message.dart';
 import 'gps.dart';
 import 'data/main_database_helper.dart';
+import 'nmea/nmea_buffer.dart';
 import 'nmea/nmea_message.dart';
 import 'nmea/nmea_message_factory.dart';
 import 'weather/metar_cache.dart';
@@ -77,22 +79,27 @@ class Storage {
   TrafficCache trafficCache = TrafficCache();
   final StackWithOne<Position> _gpsStack = StackWithOne(Gps.centerUSAPosition());
   int myIcao = 0;
+  PfdData pfdData = PfdData(); // a place to drive PFD
 
+  static const gpsSwitchoverTimeMs = 30000; // switch GPS in 30 seconds
 
   final PlanRoute _route = PlanRoute("New Plan");
   PlanRoute get route => _route;
   bool gpsNoLock = false;
   int _lastMsGpsSignal = DateTime.now().millisecondsSinceEpoch;
+  int _lastMsExternalSignal = DateTime.now().millisecondsSinceEpoch - gpsSwitchoverTimeMs;
+  bool gpsInternal = true;
 
   // gps
   final _gps = Gps();
-  final _udpGdl90 = UdpReceiver();
-  final _udpNmea = UdpReceiver();
+  final _udpReceiver = UdpReceiver();
   // where all data is place. This is set on init in main
   late String dataDir;
   Position position = Gps.centerUSAPosition();
   final AppSettings settings = AppSettings();
 
+  final Gdl90Buffer _gdl90Buffer = Gdl90Buffer();
+  final NmeaBuffer _nmeaBuffer = NmeaBuffer();
 
   int _key = 1111;
 
@@ -126,43 +133,35 @@ class Storage {
   }
 
   StreamSubscription<Position>? _gpsStream;
-  StreamSubscription<Uint8List>? _udpStreamGdl90;
-  StreamSubscription<Uint8List>? _udpStreamNmea;
+  StreamSubscription<Uint8List>? _udpStream;
 
-  void startGps() {
+  void startIO() {
+
     // GPS data receive
+    // start both external and internal
     _gpsStream = _gps.getStream();
     _gpsStream?.onDone(() {
     });
     _gpsStream?.onError((obj){
     });
     _gpsStream?.onData((data) {
-      _lastMsGpsSignal = DateTime.now().millisecondsSinceEpoch; // update time when GPS signal was last received
-      _gpsStack.push(data);
-      trafficCache.ownshipLocation = data;  // If using internal GPS, we need accurate ownship location for alerts
+      if(gpsInternal) {
+        _lastMsGpsSignal = DateTime.now().millisecondsSinceEpoch; // update time when GPS signal was last received
+        _gpsStack.push(data);
+        trafficCache.ownshipLocation = data;  // If using internal GPS, we need accurate ownship location for alerts
+      } // provide internal GPS when external is not available
     });
-  }
 
-  stopGps() {
-    try {
-      _gpsStream?.cancel();
-    }
-    catch(e) {}
-  }
-
-
-  final Gdl90Buffer _gdl90Buffer = Gdl90Buffer();
-
-  void startUdp() {
     // GPS data receive
-    _udpStreamGdl90 = _udpGdl90.getStream([4000, 43211], [false, false]);
-    _udpStreamNmea = _udpNmea.getStream([49002], [false]);
-    _udpStreamGdl90?.onDone(() {
+    _udpStream = _udpReceiver.getStream([4000, 43211, 49002], [false, false, false]);
+    _udpStream?.onDone(() {
     });
-    _udpStreamGdl90?.onError((obj){
+    _udpStream?.onError((obj){
     });
-    _udpStreamGdl90?.onData((data) {
+    _udpStream?.onData((data) {
       _gdl90Buffer.put(data);
+      _nmeaBuffer.put(data);
+      // gdl90
       while(true) {
         Uint8List? message = _gdl90Buffer.get();
         if (null != message) {
@@ -171,6 +170,7 @@ class Storage {
             myIcao = m.icao;
             Position p = Position(longitude: m.coordinates.longitude, latitude: m.coordinates.latitude, timestamp: DateTime.timestamp(), accuracy: 0, altitude: m.altitude, altitudeAccuracy: 0, heading: m.heading, headingAccuracy: 0, speed: m.velocity, speedAccuracy: 0);
             _lastMsGpsSignal = DateTime.now().millisecondsSinceEpoch; // update time when GPS signal was last received
+            _lastMsExternalSignal = _lastMsGpsSignal; // start ignoring internal GPS
             _gpsStack.push(p);
             trafficCache.ownshipLocation = p;
             trafficCache.ownshipVspeed = m.verticalSpeed;
@@ -195,32 +195,34 @@ class Storage {
           break;
         }
       }
-    });
-
-
-    _udpStreamNmea?.onDone(() {
-    });
-    _udpStreamNmea?.onError((obj){
-    });
-    _udpStreamNmea?.onData((data) {
-      NmeaMessage? m = NmeaMessageFactory.buildMessage(data);
-      if(m != null && m is NmeaOwnShipMessage) {
-        NmeaOwnShipMessage m0 = m;
-        myIcao = m0.icao;
-        Position p = Position(longitude: m0.coordinates.longitude, latitude: m0.coordinates.latitude, timestamp: DateTime.timestamp(), accuracy: 0, altitude: m0.altitude, altitudeAccuracy: 0, heading: m0.heading, headingAccuracy: 0, speed: m0.velocity, speedAccuracy: 0);
-        _lastMsGpsSignal = DateTime.now().millisecondsSinceEpoch; // update time when GPS signal was last received
-        _gpsStack.push(p);
+      // nmea
+      while(true) {
+        Uint8List? message = _nmeaBuffer.get();
+        if (null != message) {
+          NmeaMessage? m = NmeaMessageFactory.buildMessage(data);
+          if(m != null && m is NmeaOwnShipMessage) {
+            NmeaOwnShipMessage m0 = m;
+            myIcao = m0.icao;
+            Position p = Position(longitude: m0.coordinates.longitude, latitude: m0.coordinates.latitude, timestamp: DateTime.timestamp(), accuracy: 0, altitude: m0.altitude, altitudeAccuracy: 0, heading: m0.heading, headingAccuracy: 0, speed: m0.velocity, speedAccuracy: 0);
+            _lastMsGpsSignal = DateTime.now().millisecondsSinceEpoch; // update time when GPS signal was last received
+            _gpsStack.push(p);
+          }
+        }
+        else {
+          break;
+        }
       }
     });
-
   }
 
-  stopUdp() {
+  stopIO() {
     try {
-      _udpStreamGdl90?.cancel();
-      _udpGdl90.finish();
-      _udpStreamNmea?.cancel();
-      _udpNmea.finish();
+      _udpStream?.cancel();
+      _udpReceiver.finish();
+    }
+    catch(e) {}
+    try {
+      _gpsStream?.cancel();
     }
     catch(e) {}
   }
@@ -273,17 +275,20 @@ class Storage {
       position = _gpsStack.pop();
       gpsChange.value = position; // tell everyone
       route.update(); // change to route
+      int now = DateTime.now().millisecondsSinceEpoch;
+      gpsInternal = ((_lastMsExternalSignal + gpsSwitchoverTimeMs) < now);
+
+      int diff = now - _lastMsGpsSignal;
+      if (diff > 2 * gpsSwitchoverTimeMs) { // no GPS signal from both sources, send warning
+        gpsNoLock = true;
+      }
+      else {
+        gpsNoLock = false;
+      }
 
       if(timeChange.value % 5 == 0) {
-        int diff = DateTime.now().millisecondsSinceEpoch - _lastMsGpsSignal;
-        if (diff > 60000) { // 60 seconds, no GPS signal, send warning
-          gpsNoLock = true;
-        }
-        else {
-          gpsNoLock = false;
-        }
 
-        if (settings.isInternalGps()) { // only for internal GPS
+        if(gpsInternal) {
           // check system for any issues
           gpsNotPermitted = await Gps().checkPermissions();
           gpsDisabled = !(await Gps().checkEnabled());

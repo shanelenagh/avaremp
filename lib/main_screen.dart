@@ -71,7 +71,7 @@ class MainScreenState extends State<MainScreen> with WidgetsBindingObserver { //
       drawer: Padding(padding: EdgeInsets.fromLTRB(0, Constants.screenHeight(context) / 8, 0, Constants.screenHeight(context) / 12),
         child: Drawer(
           child: ListView(children: [
-            ListTile(title: const Text("avareMp"),
+            ListTile(title: const Text("AvareX"),
               subtitle: const Text("0.0.1"),
               trailing: IconButton(icon: Icon(MdiIcons.exitToApp),
                 onPressed: () {
@@ -142,11 +142,10 @@ class MainScreenState extends State<MainScreen> with WidgetsBindingObserver { //
     switch (state) {
       case AppLifecycleState.resumed:
         // start GPS
-        Storage().settings.isInternalGps() ? Storage().startGps() : Storage().startUdp();
+        Storage().startIO();
         break;
       default:
-        Storage().stopGps();
-        Storage().stopUdp();
+        Storage().stopIO();
         break;
     }
   }

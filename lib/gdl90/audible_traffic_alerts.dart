@@ -666,7 +666,7 @@ class _AudioSequencePlayer {
   }
 
   Future<List<Uri>> preCacheAudioAssets(List<AssetSource> assets) {
-    if (_cache?.loadedFiles.isEmpty ?? false) {
+    if (_cache?.loadedFiles.isEmpty ?? false) {  // static singleton: brutal hack to get around Windows file locking issue with cache
       final List<String> fileNames = assets.map((e) => e.path).toList();
       return _cache!.loadAll(fileNames);
     } else {

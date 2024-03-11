@@ -9,8 +9,6 @@ import 'package:logging/logging.dart';
 
 import 'package:avaremp/gdl90/traffic_cache.dart';
 
-import 'package:flutter/material.dart';
-
 
 enum TrafficIdOption { phoneticAlphaId, fullCallsign, none }
 enum DistanceCalloutOption { none, rounded, decimal }
@@ -27,26 +25,42 @@ class AudibleTrafficAlerts {
   static AudibleTrafficAlerts? _instance;
   static final Logger _log = Logger('AudibleTrafficAlerts');
 
-  static final AudioCache _audioCache = AudioCache(prefix: "assets/audio/traffic_alerts/");
+  // Audio assets for each sound used to compose an alert
+  final AssetSource _trafficAudio = AssetSource("tr_traffic.mp3");
+  final AssetSource _bogeyAudio = AssetSource("tr_bogey.mp3");
+  final AssetSource _closingInAudio = AssetSource("tr_cl_closingin.mp3");
+  final AssetSource _overAudio = AssetSource("tr_cl_over.mp3");
+  final AssetSource _lowAudio = AssetSource("tr_low.mp3"), _highAudio = AssetSource("tr_high.mp3"), _sameAltitudeAudio = AssetSource("tr_same_altitude.mp3");
+  final AssetSource _oClockAudio = AssetSource("tr_oclock.mp3");
+  final List<AssetSource> _twentiesToNinetiesAudios = [
+    AssetSource("tr_20.mp3"), AssetSource("tr_30.mp3"), AssetSource("tr_40.mp3"), AssetSource("tr_50.mp3"), 
+    AssetSource("tr_60.mp3"), AssetSource("tr_70.mp3"), AssetSource("tr_80.mp3"), AssetSource("tr_90.mp3")
+  ];
+  final AssetSource _hundredAudio = AssetSource("tr_100.mp3"), _thousandAudio = AssetSource("tr_1000.mp3");
+  final AssetSource _atAudio = AssetSource("tr_at.mp3");
+  final List<AssetSource> _alphabetAudios = [
+    AssetSource("tr_alpha.mp3"), AssetSource("tr_bravo.mp3"), AssetSource("tr_charlie.mp3"), AssetSource("tr_delta.mp3"),
+    AssetSource("tr_echo.mp3"), AssetSource("tr_foxtrot.mp3"), AssetSource("tr_golf.mp3"), AssetSource("tr_hotel.mp3"), 
+    AssetSource("tr_india.mp3"), AssetSource("tr_juliet.mp3"), AssetSource("tr_kilo.mp3"), AssetSource("tr_lima.mp3"), 
+    AssetSource("tr_mike.mp3"), AssetSource("tr_november.mp3"), AssetSource("tr_oscar.mp3"), AssetSource("tr_papa.mp3"), 
+    AssetSource("tr_quebec.mp3"), AssetSource( "tr_romeo.mp3"), AssetSource("tr_sierra.mp3"), AssetSource("tr_tango.mp3"), 
+    AssetSource("tr_uniform.mp3"), AssetSource("tr_victor.mp3"), AssetSource("tr_whiskey.mp3"), AssetSource("tr_xray.mp3"), 
+    AssetSource("tr_yankee.mp3"), AssetSource("tr_zulu.mp3")
+  ];
+  final List<AssetSource> _numberAudios = [
+    AssetSource("tr_00.mp3"), AssetSource("tr_01.mp3"), AssetSource("tr_02.mp3"), AssetSource("tr_03.mp3"),
+    AssetSource("tr_04.mp3"), AssetSource("tr_05.mp3"), AssetSource("tr_06.mp3"), AssetSource("tr_07.mp3"), 
+    AssetSource("tr_08.mp3"), AssetSource("tr_09.mp3"), AssetSource("tr_10.mp3"), AssetSource("tr_11.mp3"), 
+    AssetSource("tr_12.mp3"), AssetSource("tr_13.mp3"), AssetSource("tr_14.mp3"), AssetSource("tr_15.mp3"), 
+    AssetSource("tr_16.mp3"), AssetSource("tr_17.mp3"), AssetSource("tr_18.mp3"), AssetSource("tr_19.mp3")
+  ];
+  final AssetSource _secondsAudio = AssetSource( "tr_seconds.mp3");
+  final AssetSource _milesAudio = AssetSource("tr_miles.mp3");
+  final AssetSource _climbingAudio = AssetSource("tr_climbing.mp3"), _descendingAudio = AssetSource("tr_descending.mp3"), _levelAudio = AssetSource("tr_level.mp3");
+  final AssetSource _criticallyCloseChirpAudio = AssetSource("tr_cl_chirp.mp3");
+  final AssetSource _withinAudio = AssetSource("tr_within.mp3");
+  final AssetSource _pointAudio = AssetSource("tr_point.mp3");
 
-  // Audio players for each sound used to compose an alert
-  final AudioPlayer _trafficAudio = AudioPlayer();
-  final AudioPlayer _bogeyAudio = AudioPlayer();
-  final AudioPlayer _closingInAudio = AudioPlayer();
-  final AudioPlayer _overAudio = AudioPlayer();
-  final AudioPlayer _lowAudio = AudioPlayer(), _highAudio = AudioPlayer(), _sameAltitudeAudio = AudioPlayer();
-  final AudioPlayer _oClockAudio = AudioPlayer();
-  final List<AudioPlayer> _twentiesToNinetiesAudios = [];
-  final AudioPlayer _hundredAudio = AudioPlayer(), _thousandAudio = AudioPlayer();
-  final AudioPlayer _atAudio = AudioPlayer();
-  final List<AudioPlayer> _alphabetAudios = [];
-  final List<AudioPlayer> _numberAudios = [];
-  final AudioPlayer _secondsAudio = AudioPlayer();
-  final AudioPlayer _milesAudio = AudioPlayer();
-  final AudioPlayer _climbingAudio = AudioPlayer(), _descendingAudio = AudioPlayer(), _levelAudio = AudioPlayer();
-  final AudioPlayer _criticallyCloseChirpAudio = AudioPlayer();
-  final AudioPlayer _withinAudio = AudioPlayer();
-  final AudioPlayer _pointAudio = AudioPlayer();
 
   final List<_AlertItem> _alertQueue = [];
   final Map<String,String> _lastTrafficPositionUpdateTimeMap = {};
@@ -70,22 +84,32 @@ class AudibleTrafficAlerts {
   double prefClosingTimeThresholdSeconds = 60;
   double prefClosestApproachThresholdNmi = 1;
   double prefCriticalClosingAlertRatio = 0.5;
+  double _prefAudioPlayRate = 1;
+  set prefAudioPlayRate(double playRate) {
+    if (_player._audioPlayer.playbackRate != playRate) {
+      _player._audioPlayer.setPlaybackRate(playRate);
+    }
+    _prefAudioPlayRate = playRate;
+  }
+  double get prefAudioPlayRate { return _prefAudioPlayRate; }
 
   bool _isRunning = false;
   bool _isPlaying = false;
 
+  final _AudioSequencePlayer _player = _AudioSequencePlayer("assets/audio/traffic_alerts/");
+
   final Completer<AudibleTrafficAlerts> _startupCompleter = Completer();
 
 
-  static Future<AudibleTrafficAlerts?> getAndStartAudibleTrafficAlerts(double playRate) async {
+  static Future<AudibleTrafficAlerts?> getAndStartAudibleTrafficAlerts() async {
     if (_instance == null) { 
       Logger.root.level = Level.SHOUT;
       Logger.root.onRecord.listen((record) {
         print('${record.time} ${record.level.name} [${record.loggerName}] - ${record.message}');
       });      
       _instance = AudibleTrafficAlerts._privateConstructor();
-      _instance?._loadAudio(playRate, _audioCache.loadedFiles.isEmpty).then((value) { 
-        _log.info("Started audible traffic alerts. Settings: playRate=$playRate");
+      _instance?._loadAudio().then((value) { 
+        _log.info("Started audible traffic alerts.");
         _instance?._isRunning = true;
         _instance?._startupCompleter.complete(_instance);
       });
@@ -100,72 +124,23 @@ class AudibleTrafficAlerts {
       _instance?._isPlaying = false;
       _instance = null;
       final Completer<void> shutdownCompleter = Completer();
-      // Try to reclaim memory of audio cache, if at all possible (e.g., no temp dir delete issues)
-      _audioCache.clearAll().then((value) {
-        _log.info("Stopped audible traffic alerts.");
-        shutdownCompleter.complete();
-      }).onError((error, stackTrace) {
-        _log.warning("Stopped audible traffic alerts with exceptions: [$error]\n    Stacktrace: [$stackTrace]");
-        shutdownCompleter.complete();        
-      });
+      // TODO: Try to reclaim memory of audio cache, if at all possible (e.g., no temp dir delete issues)
       return shutdownCompleter.future;
     } 
   }
 
   AudibleTrafficAlerts._privateConstructor();
 
-  Future<List<dynamic>> _loadAudio(double playRate, bool loadCache) async {
-    _log.shout("starting audio load");
-    final singleAudioMap = { 
-      _trafficAudio: "tr_traffic.mp3", _bogeyAudio: "tr_bogey.mp3", _closingInAudio: "tr_cl_closingin.mp3", _overAudio: "tr_cl_over.mp3",
-      _lowAudio: "tr_low.mp3", _highAudio: "tr_high.mp3", _sameAltitudeAudio: "tr_same_altitude.mp3", _oClockAudio: "tr_oclock.mp3",
-      _hundredAudio: "tr_100.mp3", _thousandAudio: "tr_1000.mp3", _atAudio: "tr_at.mp3", _secondsAudio: "tr_seconds.mp3",
-      _milesAudio: "tr_miles.mp3", _climbingAudio: "tr_climbing.mp3", _descendingAudio: "tr_descending.mp3", _levelAudio: "tr_level.mp3",
-      _criticallyCloseChirpAudio: "tr_cl_chirp.mp3", _withinAudio: "tr_within.mp3", _pointAudio: "tr_point.mp3"
-    };
-    final listAudioMap = { 
-      _twentiesToNinetiesAudios: [ "tr_20.mp3", "tr_30.mp3", "tr_40.mp3", "tr_50.mp3", "tr_60.mp3", "tr_70.mp3", "tr_80.mp3", "tr_90.mp3" ], 
-      _alphabetAudios: [ "tr_alpha.mp3", "tr_bravo.mp3", "tr_charlie.mp3", "tr_delta.mp3", "tr_echo.mp3", "tr_foxtrot.mp3", "tr_golf.mp3",
-        "tr_hotel.mp3", "tr_india.mp3", "tr_juliet.mp3", "tr_kilo.mp3", "tr_lima.mp3", "tr_mike.mp3", "tr_november.mp3", "tr_oscar.mp3", 
-        "tr_papa.mp3", "tr_quebec.mp3", "tr_romeo.mp3", "tr_sierra.mp3", "tr_tango.mp3", "tr_uniform.mp3", "tr_victor.mp3", "tr_whiskey.mp3", 
-        "tr_xray.mp3", "tr_yankee.mp3", "tr_zulu.mp3" ],
-      _numberAudios: [ "tr_00.mp3", "tr_01.mp3", "tr_02.mp3", "tr_03.mp3", "tr_04.mp3", "tr_05.mp3", "tr_06.mp3", "tr_07.mp3", "tr_08.mp3",
-        "tr_09.mp3", "tr_10.mp3", "tr_11.mp3", "tr_12.mp3", "tr_13.mp3", "tr_14.mp3", "tr_15.mp3", "tr_16.mp3", "tr_17.mp3", "tr_18.mp3",
-        "tr_19.mp3" ]
-    };
-    final List<Future> futures = [];
-    for (final singleEntry in singleAudioMap.entries) {
-      futures.add(_populateAudio(singleEntry.key, singleEntry.value, playRate, loadCache));
-    }
-    for (final listEntry in listAudioMap.entries) {
-      for (final assetName in listEntry.value) {
-        final player = AudioPlayer();
-        futures.add(_populateAudio(player, assetName, playRate, loadCache));
-        listEntry.key.add(player);
-      }
-    }
-    return Future.wait(futures);
-  }
-
-  Future<void> _populateAudio(AudioPlayer player, String assetSourceName, double playRate, bool loadCache) async {
-    return Future<void>.sync(() async {
-      _log.shout("started loading $assetSourceName");
-      if (loadCache) {
-        await _audioCache.load(assetSourceName);
-      }
-      player.audioCache = _audioCache;
-      await player.setSource(AssetSource(assetSourceName));
-      await player.setPlayerMode(PlayerMode.lowLatency);   // TODO: Blows up on android, darnit
-      await player.setReleaseMode(ReleaseMode.stop);
-      await player.setPlaybackRate(playRate);
-      player.onLog.listen((event) {
-        _log.shout("player ${player.source} log event: $event");
-      });
-      player.onPlayerStateChanged.listen((event) {
-        _log.shout("player ${player.source} state change event: $event");
-      });
-      _log.shout("done loading $assetSourceName");
-    });
+  Future<List<Uri>> _loadAudio() async {
+    final List<AssetSource> audioAssets = [
+      _trafficAudio, _bogeyAudio, _closingInAudio, _overAudio, _lowAudio, _lowAudio, _sameAltitudeAudio,
+      _oClockAudio, _hundredAudio, _hundredAudio, _atAudio, _secondsAudio, _milesAudio, _climbingAudio,
+      _descendingAudio, _levelAudio, _criticallyCloseChirpAudio, _withinAudio, _pointAudio
+    ];
+    audioAssets.addAll(_numberAudios);
+    audioAssets.addAll(_alphabetAudios);
+    audioAssets.addAll(_twentiesToNinetiesAudios);
+    return _player.preCacheAudioAssets(audioAssets);
   }
 
   void processTrafficForAudibleAlerts(List<Traffic?> trafficList, Position? ownshipLocation, DateTime? ownshipUpdateTime, 
@@ -326,7 +301,7 @@ class AudibleTrafficAlerts {
         _lastTrafficAlertTimeMap[trafficKey] = DateTime.now().millisecondsSinceEpoch;
         _isPlaying = true;
         _alertQueue.removeAt(i);
-        _AudioSequencePlayer(_buildAlertSoundSequence(nextAlert)).playAudioSequence().then((value) { 
+        _player.playAudioSequence(_buildAlertSoundSequence(nextAlert))?.then((value) { 
           if (_log.level <= Level.FINE) { // Preventing unnecessary string interpolcation of log message, per log level
             _log.fine("Queue processing: Done saying alert ${_getTrafficKey(nextAlert._traffic)} in iteration $i with queue size ${_alertQueue.length}");
           }
@@ -350,8 +325,8 @@ class AudibleTrafficAlerts {
   /// Construct sound sequence based on alert properties and preference configuration
   /// @param alert Alert item to build sound sequence for
   /// @return Sequence of sounds that represents the assembled alert
-  List<AudioPlayer> _buildAlertSoundSequence(final _AlertItem alert) {
-      final List<AudioPlayer> alertAudio = [];
+  List<AssetSource> _buildAlertSoundSequence(final _AlertItem alert) {
+      final List<AssetSource> alertAudio = [];
       if (alert._closingEvent != null && alert._closingEvent._isCriticallyClose) {
           alertAudio.add(_criticallyCloseChirpAudio);
       }
@@ -387,7 +362,7 @@ class AudibleTrafficAlerts {
       return alertAudio;
   }
 
-  void _addPositionAudio(List<AudioPlayer> alertAudio, int clockHour, double altitudeDiff) {
+  void _addPositionAudio(List<AssetSource> alertAudio, int clockHour, double altitudeDiff) {
       alertAudio.add(_atAudio);
       alertAudio.add(_numberAudios[clockHour]);
       alertAudio.add(_oClockAudio);
@@ -395,7 +370,7 @@ class AudibleTrafficAlerts {
               : (altitudeDiff > 0 ? _lowAudio : _highAudio));
   }  
 
-  void _addVerticalAttitudeAudio(List<AudioPlayer> alertAudio, double vspeed) {
+  void _addVerticalAttitudeAudio(List<AssetSource> alertAudio, double vspeed) {
       if (vspeed.abs() < 100) {
           alertAudio.add(_levelAudio);
       } else if (vspeed >= 100) {
@@ -405,7 +380,7 @@ class AudibleTrafficAlerts {
       }
   }  
 
-  void _addPhoneticAlphaTrafficIdAudio(List<AudioPlayer> alertAudio, _AlertItem alert) {
+  void _addPhoneticAlphaTrafficIdAudio(List<AssetSource> alertAudio, _AlertItem alert) {
     final String trafficKey = _getTrafficKey(alert._traffic);
     int icaoIndex = _phoneticAlphaIcaoSequenceQueue.indexOf(trafficKey);
     if (icaoIndex == -1) {
@@ -416,7 +391,7 @@ class AudibleTrafficAlerts {
   } 
 
   static final int _nineCodeUnit = "9".codeUnitAt(0), _zeroCodeUnit = "0".codeUnitAt(0), _aCodeUnit = "A".codeUnitAt(0), _zCodeUnit = "Z".codeUnitAt(0);
-  void _addFullCallsignTrafficIdAudio(List<AudioPlayer> alertAudio, String? callsign) {
+  void _addFullCallsignTrafficIdAudio(List<AssetSource> alertAudio, String? callsign) {
     if (callsign == null || callsign.trim().isEmpty) {
       return;
     }
@@ -431,7 +406,7 @@ class AudibleTrafficAlerts {
     }
   }  
 
-  void _addDistanceAudio(List<AudioPlayer> alertAudio, double distance) {
+  void _addDistanceAudio(List<AssetSource> alertAudio, double distance) {
       _addNumericalAlertAudio(alertAudio, distance, prefDistanceCalloutOption == DistanceCalloutOption.decimal);
       alertAudio.add(_milesAudio);
   }  
@@ -440,7 +415,7 @@ class AudibleTrafficAlerts {
   /// @param alertAudio Existing audio list to add numeric value to
   /// @param numeric Numeric value to speak into alert audio
   /// @param doDecimal Whether to speak 1st decimal into alert (false ==> rounded to whole #)
-  void _addNumericalAlertAudio(List<AudioPlayer> alertAudio, double numeric, bool doDecimal) {
+  void _addNumericalAlertAudio(List<AssetSource> alertAudio, double numeric, bool doDecimal) {
       if (prefNumberFormatOption == NumberFormatOption.colloquial) {
           _addColloquialNumericBaseAlertAudio(alertAudio, doDecimal ? numeric : numeric.round() * 1.0);
       } else {
@@ -455,7 +430,7 @@ class AudibleTrafficAlerts {
   /// Speak a number in digit-by-digit format (1962 ==> "one nine six two")
   /// @param alertAudio List of sounds to append to
   /// @param numeric Numeric value to speak into alertAudio
-  void _addNumberSequenceNumericBaseAlertAudio(List<AudioPlayer> alertAudio, double numeric) {
+  void _addNumberSequenceNumericBaseAlertAudio(List<AssetSource> alertAudio, double numeric) {
       double curNumeric = numeric;    // iteration variable for digit processing
       for (int i = max(numerics.log10(numeric).floor(), 0); i >= 0; i--) {
           if (i == 0) {
@@ -471,7 +446,7 @@ class AudibleTrafficAlerts {
   /// Speak a number in colloquial format (1962 ==> "one thousand nine hundred sixty-two")
   /// @param alertAudio List of sounds to append to
   /// @param numeric Numeric value to speak into alertAudio
-  void _addColloquialNumericBaseAlertAudio(List<AudioPlayer> alertAudio, final double numeric) {
+  void _addColloquialNumericBaseAlertAudio(List<AssetSource> alertAudio, final double numeric) {
     final double log10Val = numerics.log10(numeric);
     double curNumeric = numeric;
     for (int i = max(log10Val.isInfinite || log10Val.isNaN ? -1 : log10Val.floor(), 0); i >= 0; i--) {
@@ -509,7 +484,7 @@ class AudibleTrafficAlerts {
     }
   }
 
-  void _addFirstDecimalAlertAudioSequence(List<AudioPlayer> alertAudio, double numeric) {
+  void _addFirstDecimalAlertAudioSequence(List<AssetSource> alertAudio, double numeric) {
       final int firstDecimal = min(((numeric - numeric.floor()) * 10).round(), 9);
       if (firstDecimal != 0) {
           alertAudio.add(_pointAudio);
@@ -517,7 +492,7 @@ class AudibleTrafficAlerts {
       }
   }
 
-  void _addTimeToClosestPointOfApproachAudio(List<AudioPlayer> alertAudio, _ClosingEvent closingEvent) {
+  void _addTimeToClosestPointOfApproachAudio(List<AssetSource> alertAudio, _ClosingEvent closingEvent) {
       if (_addClosingSecondsAudio(alertAudio, closingEvent.closingSeconds())) {
           if (prefDistanceCalloutOption != DistanceCalloutOption.none) {
               alertAudio.add(_withinAudio);
@@ -526,7 +501,7 @@ class AudibleTrafficAlerts {
       }
   }  
 
-  bool _addClosingSecondsAudio(List<AudioPlayer> alertAudio, double closingSeconds) {
+  bool _addClosingSecondsAudio(List<AssetSource> alertAudio, double closingSeconds) {
       // Subtract speaking time of audio clips, and computation thereof, prior to # of seconds in this alert
       final double adjustedClosingSeconds = closingSeconds - (alertAudio.length*500.0/1000.0); // SWAG ==> TODO: Put in infra and code to compute duration of audio-to-date exactly?
       if (adjustedClosingSeconds > 0) {
@@ -660,72 +635,23 @@ class _AlertItem {
 
 
 class _AudioSequencePlayer {
-  final List<AudioPlayer?> _audioPlayers;
-  final Completer _completer = Completer();
-  StreamSubscription<void>? _lastAudioPlayerSubscription;
-  int _seqIndex = 0;
-
-  _AudioSequencePlayer(List<AudioPlayer?> audioPlayers) 
-    : _audioPlayers = audioPlayers, assert(audioPlayers.isNotEmpty)
-  {
-    _lastAudioPlayerSubscription = _audioPlayers[0]?.onPlayerComplete.listen((event) {
-      _handleNextSeqAudio();
-    });      
-  }
-
-  void _handleNextSeqAudio() async {
-    
-    AudibleTrafficAlerts._log.shout("Handling next seq at # $_seqIndex");
-    await _lastAudioPlayerSubscription?.cancel();
-    if (_seqIndex < _audioPlayers.length) {
-      AudibleTrafficAlerts._log.shout("stopping prev at seq $_seqIndex source ${_audioPlayers[_seqIndex]?.source}");
-      await _audioPlayers[_seqIndex-1]?.stop();
-      _lastAudioPlayerSubscription = _audioPlayers[_seqIndex]?.onPlayerComplete.listen((event) { _handleNextSeqAudio(); });
-      AudibleTrafficAlerts._log.shout("Calling neext resume at seq $_seqIndex");
-      await _audioPlayers[_seqIndex++]?.resume();
-      AudibleTrafficAlerts._log.shout("called next resume at seq $_seqIndex");
-    } else {       
-      AudibleTrafficAlerts._log.shout("Calling complete on sequence"); 
-      _completer.complete();
-      AudibleTrafficAlerts._log.shout("Called complete on sequence"); 
-    }
-  }
-
-  Future<void> playAudioSequence() async {
-    AudibleTrafficAlerts._log.shout("Starint seq resume");
-    await _audioPlayers[_seqIndex++]?.resume();
-    AudibleTrafficAlerts._log.shout("Called seq first resume");
-    return _completer.future;
-  }
-}
-
-
-class _AudioSequencePlayer2 {
   final AudioPlayer _audioPlayer = AudioPlayer();
   Completer<void>? _completer;
   final AudioCache _cache;
-  int _startTime = 0;
   List<AssetSource> _audios = [];
   int _seqNum = 0;
 
-  _AudioSequencePlayer2(String cacheAudioDirectory, [double? playRate]) 
+  _AudioSequencePlayer(String cacheAudioDirectory) 
     : _cache = AudioCache(prefix: cacheAudioDirectory)
   {
     _audioPlayer.onPlayerComplete.listen(_handleNextSeqAudio);
     _audioPlayer.audioCache = _cache;
-    //_audioPlayer.setReleaseMode(ReleaseMode.stop);
-    //_audioPlayer.setPlayerMode(PlayerMode.lowLatency);
-    if (playRate != null) {
-      _log("setting play rate $playRate");
-      _audioPlayer.setPlaybackRate(playRate);
-    }
   }
 
   void _handleNextSeqAudio(event) {
     if (_seqNum < _audios.length) {
       _audioPlayer.play(_audios[_seqNum++]);
     } else {
-      _log("Played sequence in ${DateTime.now().millisecondsSinceEpoch-_startTime}ms");
       _completer?.complete();
       _completer = null;
     }
@@ -744,72 +670,9 @@ class _AudioSequencePlayer2 {
       throw "Invalid argument: audio sources list is empty";
     }
     _audios = audioSources;
-    _startTime = DateTime.now().millisecondsSinceEpoch;
+    _seqNum = 0;    
     _audioPlayer.play(_audios[_seqNum++]);
-    //_audioPlayer.resume();
     _completer = Completer();
     return _completer?.future;
-  }
-}
-
-
-
-
-
-const double _kPlayRate = 1;
-
-void _log(String msg) {
-  print("${DateTime.now().millisecondsSinceEpoch}: $msg");
-}
-
-void main() {
-  runApp(const MainApp());
-}
-
-class MainApp extends StatefulWidget {
-  const MainApp({super.key});
-  
-  @override
-  MainAppState createState() => MainAppState();
-}
-
-class MainAppState extends State<MainApp> {
-
-  AssetSource _chirpAudioAsset = AssetSource("tr_cl_chirp.mp3");
-  AssetSource _bogeyAudioAsset = AssetSource("tr_bogey.mp3");
-  _AudioSequencePlayer2 sPlayer = _AudioSequencePlayer2("assets/audio/traffic_alerts/", 2);
-
-  @override
-  void initState() {
-    super.initState();
-  
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      home: Scaffold(
-        body: const Center(
-          child: Text("Play audio by pushing button below")
-        ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: playIt3,
-          child: const Text("Play Audio")
-        ),
-      ),
-    );
-  }
-
-  void playIt3() async {
-    await sPlayer._audioPlayer.setPlaybackRate(2);
-    //sPlayer.preCacheAudioAssets([ _chirpAudioAsset, _bogeyAudioAsset ]);
-    //sPlayer.playAudioSequence([ _chirpAudioAsset, _bogeyAudioAsset ]);
-    //AudioPlayer a = AudioPlayer();
-    //a.audioCache = sPlayer._cache;
-    //a.setPlaybackRate(2);
-    //a.play(_chirpAudioAsset);
-      final player = AudioPlayer();
-      await player.setPlaybackRate(2);
-      await player.play(AssetSource("audio/traffic_alerts/tr_bogey.mp3"));
   }
 }

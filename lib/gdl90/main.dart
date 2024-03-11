@@ -20,7 +20,7 @@ class MainAppState extends State<MainApp> {
   @override
   void initState() {
     super.initState();
-    AudibleTrafficAlerts.getAndStartAudibleTrafficAlerts(1.1).then((value)  { 
+    AudibleTrafficAlerts.getAndStartAudibleTrafficAlerts().then((value)  { 
       alertPlayer = value;
       isAudioLoaded = true; 
       print("Audible alerts loaded");

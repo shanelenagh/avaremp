@@ -4,7 +4,6 @@ import 'dart:math';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:dart_numerics/dart_numerics.dart' as numerics;
-import 'package:vector_math/vector_math.dart';
 import 'package:logging/logging.dart';
 
 import 'package:avaremp/gdl90/traffic_cache.dart';
@@ -16,6 +15,10 @@ enum TrafficIdOption { phoneticAlphaId, fullCallsign, none }
 enum DistanceCalloutOption { none, rounded, decimal }
 enum NumberFormatOption { colloquial, individualDigit }
 
+@pragma("vm:prefer-inline")
+double _radians(double deg) {
+  return deg / 180.0 * pi;
+}
 
 class AudibleTrafficAlerts {
 
@@ -557,10 +560,10 @@ class AudibleTrafficAlerts {
                                           final double heading1, final double heading2, final int velocity1, final int velocity2)
   {
     // Use cosine of average of two latitudes, to give some weighting for lesser intra-lon distance at higher latitudes
-    final double a = (lon2 - lon1) * (60.0000 * cos(radians((lat1+lat2)/2.0000)));
-    final double b = velocity2*sin(radians(heading2)) - velocity1*sin(radians(heading1));
+    final double a = (lon2 - lon1) * (60.0000 * cos(_radians((lat1+lat2)/2.0000)));
+    final double b = velocity2*sin(_radians(heading2)) - velocity1*sin(_radians(heading1));
     final double c = (lat2 - lat1) * 60.0000;
-    final double d = velocity2*cos(radians(heading2)) - velocity1*cos(radians(heading1));
+    final double d = velocity2*cos(_radians(heading2)) - velocity1*cos(_radians(heading1));
 
     return - ((a*b + c*d) / (b*b + d*d));
   }
@@ -568,12 +571,12 @@ class AudibleTrafficAlerts {
   static Position _locationAfterTime(final double lat, final double lon, final double heading, final double velocityInKt, 
     final double timeInHrs, final double altInFeet, final double vspeedInFpm) 
   {
-      final double newLat =  lat + cos(radians(heading)) * (velocityInKt/60.00000) * timeInHrs;
+      final double newLat =  lat + cos(_radians(heading)) * (velocityInKt/60.00000) * timeInHrs;
       return Position (
         latitude: newLat,
-        longitude: lon + sin(radians(heading))
+        longitude: lon + sin(_radians(heading))
                 // Again, use cos of average lat to give some weighting based on shorter intra-lon distance changes at higher latitudes
-                * (velocityInKt / (60.00000*cos(radians((newLat+lat)/2.0000))))
+                * (velocityInKt / (60.00000*cos(_radians((newLat+lat)/2.0000))))
                 * timeInHrs,
         altitude: altInFeet + (vspeedInFpm * (60.0 * timeInHrs)),
         altitudeAccuracy: 0,

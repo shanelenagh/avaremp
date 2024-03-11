@@ -9,6 +9,8 @@ import 'package:logging/logging.dart';
 
 import 'package:avaremp/gdl90/traffic_cache.dart';
 
+//import 'package:flutter/material.dart';
+
 
 enum TrafficIdOption { phoneticAlphaId, fullCallsign, none }
 enum DistanceCalloutOption { none, rounded, decimal }
@@ -636,7 +638,7 @@ class _AlertItem {
 
 class _AudioSequencePlayer {
   final AudioPlayer _audioPlayer = AudioPlayer();
-  final AudioPlayer _audioPlayerAlt = AudioPlayer();  // my own DIY AudioPool--with more control
+  final AudioPlayer _audioPlayerAlt = AudioPlayer();  // my own DIY dual AudioPool--with more control
   bool _useAlt = false;
   Completer<void>? _completer;
   static AudioCache? _cache;  // static singleton: brutal hack to get around Windows file locking issue with cache
@@ -665,7 +667,7 @@ class _AudioSequencePlayer {
 
   Future<List<Uri>> preCacheAudioAssets(List<AssetSource> assets) {
     if (_cache?.loadedFiles.isEmpty ?? false) {
-    List<String> fileNames = assets.map((e) => e.path).toList();
+      final List<String> fileNames = assets.map((e) => e.path).toList();
       return _cache!.loadAll(fileNames);
     } else {
       final Completer<List<Uri>> completer = Completer();
@@ -689,12 +691,67 @@ class _AudioSequencePlayer {
   }
 
   void _playFlip() {
-    if (_useAlt ) {
-      _audioPlayerAlt.play(_audios[_seqNum++]);    
-    } else {
-      _audioPlayer.play(_audios[_seqNum++]);  
+    if (_useAlt) {
+      _audioPlayerAlt.play(_audios[_seqNum++]);
+    } else {  
+      _audioPlayer.play(_audios[_seqNum++]);
     }
     _useAlt = !_useAlt;
   }
 }
 
+/// Manual test harness for the AudioSquencePlayer
+/*
+void main() {
+  runApp(const MainApp());
+}
+
+class MainApp extends StatefulWidget {
+  const MainApp({super.key});
+  
+  @override
+  MainAppState createState() => MainAppState();
+}
+
+final Logger _log = Logger('Audible testing');
+
+class MainAppState extends State<MainApp>  {
+  
+  final _AudioSequencePlayer _player = _AudioSequencePlayer("assets/audio/traffic_alerts/");
+  final AssetSource _trafficAudio = AssetSource("tr_traffic.mp3");
+  final AssetSource _bogeyAudio = AssetSource("tr_bogey.mp3");
+  final AssetSource _closingInAudio = AssetSource("tr_cl_closingin.mp3");
+  final AssetSource _overAudio = AssetSource("tr_cl_over.mp3");  
+
+  @override
+  void initState() {
+    super.initState();
+      Logger.root.level = Level.INFO;
+      Logger.root.onRecord.listen((record) {
+        print('${record.time} ${record.level.name} [${record.loggerName}] - ${record.message}');
+      });          
+    _player.preCacheAudioAssets([]).then((value) {
+      _log.shout("sounds loaded");
+    }); 
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        body:  const Center(
+          child: Text("Play audio by pushing button below")
+        ),
+        floatingActionButton: FloatingActionButton(
+          onPressed: playIt,
+          child: const Text("Play Audio")
+        ),
+      ),
+    );
+  }
+
+  void playIt() async {
+    _player.playAudioSequence([ _bogeyAudio, _trafficAudio, _closingInAudio, _overAudio ]);
+  }
+}
+*/

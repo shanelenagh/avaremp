@@ -103,7 +103,7 @@ class AudibleTrafficAlerts {
 
   static Future<AudibleTrafficAlerts?> getAndStartAudibleTrafficAlerts() async {
     if (_instance == null) { 
-      Logger.root.level = Level.SHOUT;
+      Logger.root.level = Level.INFO;
       Logger.root.onRecord.listen((record) {
         print('${record.time} ${record.level.name} [${record.loggerName}] - ${record.message}');
       });      

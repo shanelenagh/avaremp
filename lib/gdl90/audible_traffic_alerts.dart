@@ -636,6 +636,8 @@ class _AlertItem {
 
 class _AudioSequencePlayer {
   final AudioPlayer _audioPlayer = AudioPlayer();
+  final AudioPlayer _audioPlayerAlt = AudioPlayer();  // my own DIY AudioPool--with more control
+  bool _useAlt = false;
   Completer<void>? _completer;
   static AudioCache? _cache;  // static singleton: brutal hack to get around Windows file locking issue with cache
   List<AssetSource> _audios = [];
@@ -645,14 +647,18 @@ class _AudioSequencePlayer {
   {
     _cache ??= AudioCache(prefix: cacheAudioDirectory);  // static singleton: brutal hack to get around Windows file locking issue with cache
     _audioPlayer.audioCache = _cache!;
+    _audioPlayerAlt.audioCache = _cache!;
     _audioPlayer.onPlayerComplete.listen(_handleNextSeqAudio);
-    
+    _audioPlayerAlt.onPlayerComplete.listen(_handleNextSeqAudio);   
+    _audioPlayer.setReleaseMode(ReleaseMode.stop);
+    _audioPlayerAlt.setReleaseMode(ReleaseMode.stop);
   }
 
-  void _handleNextSeqAudio(event) {
+  void _handleNextSeqAudio(event) async {
     if (_seqNum < _audios.length) {
-      _audioPlayer.play(_audios[_seqNum++]);
+      _playFlip();
     } else {
+      _log("Finished seq in ${DateTime.now().millisecondsSinceEpoch-_start}ms");
       _completer?.complete();
       _completer = null;
     }
@@ -669,7 +675,7 @@ class _AudioSequencePlayer {
     }
   }
 
-  Future<void>? playAudioSequence(List<AssetSource> audioSources) {
+  Future<void>? playAudioSequence(List<AssetSource> audioSources) async {
     if (_completer != null) {
       throw "Illegal state: audio sequence play currently in progress";
     }
@@ -678,8 +684,18 @@ class _AudioSequencePlayer {
     }
     _audios = audioSources;
     _seqNum = 0;    
-    _audioPlayer.play(_audios[_seqNum++]);
+    _playFlip();
     _completer = Completer();
     return _completer?.future;
   }
+
+  void _playFlip() {
+    if (_useAlt ) {
+      _audioPlayerAlt.play(_audios[_seqNum++]);    
+    } else {
+      _audioPlayer.play(_audios[_seqNum++]);  
+    }
+    _useAlt = !_useAlt;
+  }
 }
+

@@ -70,6 +70,7 @@ class AudibleTrafficAlerts {
   final Map<String,int> _lastTrafficAlertTimeMap =  {};
   final List<String> _phoneticAlphaIcaoSequenceQueue = [];
 
+  // General audible alert preferences
   bool prefIsAudibleGroundAlertsEnabled = true;
   bool prefVerticalAttitudeCallout = false;
   DistanceCalloutOption prefDistanceCalloutOption = DistanceCalloutOption.none;
@@ -78,10 +79,10 @@ class AudibleTrafficAlerts {
   bool prefTopGunDorkMode = false;
   int prefAudibleTrafficAlertsMinSpeed = 0;
   int prefAudibleTrafficAlertsDistanceMinimum = 5;
-  double prefTrafficAlertsHeight = 4000;
+  double prefTrafficAlertsHeight = 1000;
   int prefMaxAlertFrequencySeconds = 15;
   int prefTimeBetweenAnyAlertMs = 750;
-
+  // Closing (TCPA) alert preferences
   bool prefIsAudibleClosingInAlerts = true;
   double prefClosingAlertAltitude = 1000;
   double prefClosingTimeThresholdSeconds = 60;

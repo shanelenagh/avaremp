@@ -48,6 +48,8 @@ jobs:
           flutter-version: '3.19.0'
       - name: Update source repo
         run: sudo apt-get update
+      - name: Pre-empt libunwind issue for gstreamer
+        run: sudo apt-get install -y libc++abi-dev libc++-dev
       - name: Install audioplayers dependencies
         run: sudo apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
       - name: Install dependencies

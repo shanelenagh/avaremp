@@ -69,7 +69,6 @@ dependencies:
   xml: ^6.5.0
   html: ^0.15.4
   audioplayers: ^5.2.1
-  dart_numerics: ^0.0.6
   logging: ^1.2.0
   image: ^4.1.7
   just_the_tooltip: ^0.0.12

@@ -1,9 +1,7 @@
 import 'dart:async';
 import 'dart:math';
-
 import 'package:audioplayers/audioplayers.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:dart_numerics/dart_numerics.dart' as numerics;
 import 'package:logging/logging.dart';
 
 import 'package:avaremp/gdl90/traffic_cache.dart';
@@ -19,6 +17,9 @@ enum NumberFormatOption { colloquial, individualDigit }
 double _radians(double deg) {
   return deg / 180.0 * pi;
 }
+
+@pragma("vm:prefer-inline")
+double _log10(num x) => log(x) / ln10;
 
 class AudibleTrafficAlerts {
 
@@ -437,7 +438,7 @@ class AudibleTrafficAlerts {
   /// @param numeric Numeric value to speak into alertAudio
   void _addNumberSequenceNumericBaseAlertAudio(List<AssetSource> alertAudio, double numeric) {
       double curNumeric = numeric;    // iteration variable for digit processing
-      for (int i = max(numerics.log10(numeric).floor(), 0); i >= 0; i--) {
+      for (int i = max(_log10(numeric).floor(), 0); i >= 0; i--) {
           if (i == 0) {
               alertAudio.add(_numberAudios[min((curNumeric % 10).floor(), 9)]);
           } else {
@@ -452,7 +453,7 @@ class AudibleTrafficAlerts {
   /// @param alertAudio List of sounds to append to
   /// @param numeric Numeric value to speak into alertAudio
   void _addColloquialNumericBaseAlertAudio(List<AssetSource> alertAudio, final double numeric) {
-    final double log10Val = numerics.log10(numeric);
+    final double log10Val = _log10(numeric);
     double curNumeric = numeric;
     for (int i = max(log10Val.isInfinite || log10Val.isNaN ? -1 : log10Val.floor(), 0); i >= 0; i--) {
       if (i == 0

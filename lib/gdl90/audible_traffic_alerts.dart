@@ -2,11 +2,8 @@ import 'dart:async';
 import 'dart:math';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:logging/logging.dart';
 
 import 'package:avaremp/gdl90/traffic_cache.dart';
-
-//import 'package:flutter/material.dart';
 
 
 enum TrafficIdOption { phoneticAlphaId, fullCallsign, none }
@@ -21,6 +18,7 @@ double _radians(double deg) {
 @pragma("vm:prefer-inline")
 double _log10(num x) => log(x) / ln10;
 
+/// Class to calculate and speak audio alerts for nearby and closing-in (TCPA) traffic
 class AudibleTrafficAlerts {
 
   static const double _kMpsToKnotsConv = 1.0/0.514444;
@@ -29,7 +27,6 @@ class AudibleTrafficAlerts {
   static const double _kMetersPerNauticalMile = 1852.000;
 
   static AudibleTrafficAlerts? _instance;
-  static final Logger _log = Logger('AudibleTrafficAlerts');
 
   // Audio assets for each sound used to compose an alert
   final AssetSource _trafficAudio = AssetSource("tr_traffic.mp3");
@@ -108,14 +105,9 @@ class AudibleTrafficAlerts {
 
 
   static Future<AudibleTrafficAlerts?> getAndStartAudibleTrafficAlerts() async {
-    if (_instance == null) { 
-      Logger.root.level = Level.INFO;
-      Logger.root.onRecord.listen((record) {
-        print('${record.time} ${record.level.name} [${record.loggerName}] - ${record.message}');
-      });      
+    if (_instance == null) {     
       _instance = AudibleTrafficAlerts._privateConstructor();
       _instance?._loadAudio().then((value) { 
-        _log.info("Started audible traffic alerts.");
         _instance?._isRunning = true;
         _instance?._startupCompleter.complete(_instance);
       });
@@ -155,18 +147,12 @@ class AudibleTrafficAlerts {
     if (!_isRunning || ownshipLocation == null || (ownshipLocation.speed*_kMpsToKnotsConv < prefAudibleTrafficAlertsMinSpeed) 
       || !(ownIsAirborne || prefIsAudibleGroundAlertsEnabled)) 
     {
-      if (_log.level <= Level.FINER) { // Preventing unnecessary string interpolcation of log message, per log level
-        _log.finer("Skipping alerts processing due to top-level precondition (e.g., ownship location [$ownshipLocation] or airborne [$ownIsAirborne] filter , ownship speed [${ownshipLocation?.speed??0*_kMpsToKnotsConv}] filter, etc.)");
-      }
       return;
     }
 
     bool hasInserts = false;
     for (final traffic in trafficList) {
-      if (traffic == null || traffic.message.icao == ownIcao || !(traffic.message.airborne || prefIsAudibleGroundAlertsEnabled)) {      
-        if (_log.level <= Level.FINER) { // Preventing unnecessary string interpolcation of log message, per log level
-          _log.finer("Skipping this traffic [${_getTrafficKey(traffic)}] processing due to precondition (e.g., ownship icao [$ownIcao], traffic airborne [${traffic?.message.airborne}] filter, etc.)");
-        }        
+      if (traffic == null || traffic.message.icao == ownIcao || !(traffic.message.airborne || prefIsAudibleGroundAlertsEnabled)) {            
         continue;
       }
       final double altDiff = _kMetersToFeetCont * ownshipLocation.altitude - traffic.message.altitude;
@@ -175,18 +161,13 @@ class AudibleTrafficAlerts {
       final String? lastTrafficPositionUpdateValue = _lastTrafficPositionUpdateTimeMap[trafficKey];
       final bool hasUpdate;
       double curDistance = _kMaxIntValue*1.0;
-      if (_log.level <= Level.FINER) { // Preventing unnecessary string interpolcation of log message, per log level
-        _log.finer("Processing [$trafficKey], which has previous update times of $lastTrafficPositionUpdateValue");
-      }    
+ 
       // Ensure traffic has been recently updated, and if within the alerts threshold "cylinder", upsert it to the alert queue   
       if ((hasUpdate = lastTrafficPositionUpdateValue == null || lastTrafficPositionUpdateValue != trafficPositionTimeCalcUpdateValue)
         && altDiff.abs() < prefTrafficAlertsHeight
         && (curDistance = _greatCircleDistanceNmi(ownshipLocation.latitude, ownshipLocation.longitude,
           traffic.message.coordinates.latitude, traffic.message.coordinates.longitude)) < prefAudibleTrafficAlertsDistanceMinimum
-      ) {
-        if (_log.level <= Level.FINE) { // Preventing unnecessary string interpolcation of log message, per log level
-          _log.fine("Got alert hit for [$trafficKey], with alt diff=$altDiff and distance=$curDistance");
-        }        
+      ) {      
         hasInserts = hasInserts || _upsertTrafficAlertQueue(
           _AlertItem(traffic, ownshipLocation, 
             prefIsAudibleClosingInAlerts  
@@ -196,15 +177,8 @@ class AudibleTrafficAlerts {
         );      
       } else if (hasUpdate) {
         // Prune out any alert for this traffic that no longer qualifies (e.g., distance exceeded before able to process/speak)
-        if (_log.level <= Level.FINER) {
-          _log.finer("Traffic [$trafficKey] didn't make the cut, with alt diff=$altDiff and distance=$curDistance");
-        }
         _alertQueue.removeWhere((element) { 
-          final bool removeObsoleteAlert = element._traffic?.message.icao == traffic.message.icao; 
-          if (removeObsoleteAlert && _log.level <= Level.FINE) { // Preventing unnecessary string interpolcation of log message, per log level
-            _log.fine("Removing obsolete [altdiff=$altDiff, distance=$curDistance] alert: [$element] with queue size ${_alertQueue.length}");
-          }
-          return removeObsoleteAlert;
+          return element._traffic?.message.icao == traffic.message.icao;
         });
       }
       _lastTrafficPositionUpdateTimeMap[trafficKey] = trafficPositionTimeCalcUpdateValue;
@@ -217,10 +191,7 @@ class AudibleTrafficAlerts {
 
   bool _upsertTrafficAlertQueue(_AlertItem alert) {
     final int existingIndex = _alertQueue.indexOf(alert);
-    if (existingIndex == -1) {
-      if (_log.level <= Level.FINE) { // Preventing unnecessary string interpolcation of log message, per log level
-        _log.fine("Adding [$alert] to the queue with current size ${_alertQueue.length}");
-      }       
+    if (existingIndex == -1) {    
       // If this is a "critically close" alert, put it ahead of the first non-critically close alert
       if ((alert._closingEvent?._isCriticallyClose ?? false) && _alertQueue.isNotEmpty) {
         final int lowestNonCEIndex = _alertQueue.indexWhere((element) => !(element._closingEvent?._isCriticallyClose ?? false));
@@ -230,17 +201,11 @@ class AudibleTrafficAlerts {
       // ..otherwise, if this is just a normal alert, or it is andall others are also critical, put it at the back of the queue
       _alertQueue.add(alert);
       return true;
-    } else {
-      if (_log.level <= Level.FINE) { // Preventing unnecessary string interpolcation of log message, per log level
-        _log.fine("Updating [$alert] to the queue with current size ${_alertQueue.length} at position $existingIndex");
-      }     
+    } else {     
       // If this old alert that wasn't critically close before is now --> move it to the first non-critical spot
       if ((alert._closingEvent?._isCriticallyClose ?? false) && !(_alertQueue[existingIndex]._closingEvent?._isCriticallyClose ?? false)) {
         final int lowestNonCEIndex = _alertQueue.indexWhere((element) => !(element._closingEvent?._isCriticallyClose ?? false));
-        if (lowestNonCEIndex < existingIndex) { // Ensures there is some benefit, and we aren't shifting/borking indexes
-          if (_log.level <= Level.FINE) { // Preventing unnecessary string interpolcation of log message, per log level
-              _log.fine("Moving (now) closing event alert [$alert] up from index $existingIndex to $lowestNonCEIndex");
-          }  
+        if (lowestNonCEIndex < existingIndex) { // Ensures there is some benefit, and we aren't shifting/borking indexes  
           _alertQueue.removeAt(existingIndex);
           _alertQueue.insert(lowestNonCEIndex, alert);
           return false;
@@ -293,24 +258,15 @@ class AudibleTrafficAlerts {
     // Loop to allow a traffic item to cede place in line to next available one to be considered if current one can't go now
     for (int i = 0; i < _alertQueue.length; i++) {
       final _AlertItem nextAlert = _alertQueue[i];
-      if (_log.level <= Level.FINER) { // Preventing unnecessary string interpolcation of log message, per log level
-        _log.finer("Queue processing: looking at ${_getTrafficKey(nextAlert._traffic)} in iteration $i with queue size ${_alertQueue.length}");
-      }
       final String trafficKey = _getTrafficKey(nextAlert._traffic);
       final int? lastTrafficAlertTimeValue = _lastTrafficAlertTimeMap[trafficKey];
       if (lastTrafficAlertTimeValue == null
         || (timeToWaitForTraffic = min(timeToWaitForTraffic, (prefMaxAlertFrequencySeconds * 1000) - (DateTime.now().millisecondsSinceEpoch - lastTrafficAlertTimeValue))) <= 0
       ) {
-        if (_log.level <= Level.FINE) { // Preventing unnecessary string interpolcation of log message, per log level
-          _log.fine("Queue processing: Saying alert for ${_getTrafficKey(nextAlert._traffic)} in iteration $i with queue size ${_alertQueue.length}");
-        }
         _lastTrafficAlertTimeMap[trafficKey] = DateTime.now().millisecondsSinceEpoch;
         _isPlaying = true;
         _alertQueue.removeAt(i);
         _player.playAudioSequence(_buildAlertSoundSequence(nextAlert))?.then((value) { 
-          if (_log.level <= Level.FINE) { // Preventing unnecessary string interpolcation of log message, per log level
-            _log.fine("Queue processing: Done saying alert ${_getTrafficKey(nextAlert._traffic)} in iteration $i with queue size ${_alertQueue.length}");
-          }
           _isPlaying = false;
           if (_alertQueue.isNotEmpty) {
             Future.delayed(Duration(milliseconds: (_alertQueue[0]._closingEvent?._isCriticallyClose ?? false) ? 0 
@@ -320,10 +276,8 @@ class AudibleTrafficAlerts {
         return;
       } 
     }
+    // No-one can alert now, but we have a defined time we need to wait before the next one can
     if (timeToWaitForTraffic != _kMaxIntValue && timeToWaitForTraffic > 0) {
-      if (_log.level <= Level.FINE) { // Preventing unnecessary string interpolcation of log message, per log level
-        _log.fine("Queue processing: Waiting for traffic for ${timeToWaitForTraffic}ms with queue size ${_alertQueue.length}");
-      }
       Future.delayed(Duration(milliseconds: timeToWaitForTraffic), runAudibleAlertsQueueProcessing);
     }
   }
@@ -351,10 +305,7 @@ class AudibleTrafficAlerts {
 
       final int clockHour = _nearestClockHourFromHeadingAndLocations(alert._ownLocation?.latitude??0,
 										alert._ownLocation?.longitude??0, alert._traffic?.message.coordinates.latitude??0, 
-                    alert._traffic?.message.coordinates.longitude??0, alert._ownLocation?.heading??0);
-      if (_log.level <= Level.FINE) { // Preventing unnecessary string interpolcation of log message, per log level
-        _log.fine("Building audio: Alert [$alert] at $clockHour o'clock");
-      }      
+                    alert._traffic?.message.coordinates.longitude??0, alert._ownLocation?.heading??0); 
       _addPositionAudio(alertAudio, clockHour, alert._altDiff);
       
       
@@ -458,7 +409,7 @@ class AudibleTrafficAlerts {
     for (int i = max(log10Val.isInfinite || log10Val.isNaN ? -1 : log10Val.floor(), 0); i >= 0; i--) {
       if (i == 0
         // Only speak "zero" if it is only zero (not part of tens/hundreds/thousands)
-        && ((min(curNumeric % 10, 9).floor()) != 0 || (max(numerics.log10(numeric), 0)) == 0))
+        && ((min(curNumeric % 10, 9).floor()) != 0 || (max(_log10(numeric), 0)) == 0))
       {
         alertAudio.add(_numberAudios[min(curNumeric % 10, 9).floor()]);
       } else {
@@ -509,7 +460,7 @@ class AudibleTrafficAlerts {
 
   bool _addClosingSecondsAudio(List<AssetSource> alertAudio, double closingSeconds) {
       // Subtract speaking time of audio clips, and computation thereof, prior to # of seconds in this alert
-      final double adjustedClosingSeconds = closingSeconds - (alertAudio.length*500.0/1000.0); // SWAG ==> TODO: Put in infra and code to compute duration of audio-to-date exactly?
+      final double adjustedClosingSeconds = closingSeconds - (alertAudio.length*700.0/1000.0); // SWAG ==> TODO: Put in infra and code to compute duration of audio-to-date exactly?
       if (adjustedClosingSeconds > 0) {
           alertAudio.add(_closingInAudio);
           _addNumericalAlertAudio(alertAudio, adjustedClosingSeconds, false);
@@ -639,7 +590,7 @@ class _AlertItem {
   }
 }
 
-
+/// Plays a sequence of audio clips one after another (e.g., an alert)
 class _AudioSequencePlayer {
   final AudioPlayer _audioPlayer = AudioPlayer();
   final AudioPlayer _audioPlayerAlt = AudioPlayer();  // my own DIY dual AudioPool--with more control
@@ -688,9 +639,9 @@ class _AudioSequencePlayer {
       throw "Invalid argument: audio sources list is empty";
     }
     _audios = audioSources;
-    _seqNum = 0;    
+    _seqNum = 0;
+    _completer = Completer();    
     _playFlip();
-    _completer = Completer();
     return _completer?.future;
   }
 
@@ -703,59 +654,3 @@ class _AudioSequencePlayer {
     _useAlt = !_useAlt;
   }
 }
-
-/// Manual test harness for the AudioSquencePlayer
-/*
-void main() {
-  runApp(const MainApp());
-}
-
-class MainApp extends StatefulWidget {
-  const MainApp({super.key});
-  
-  @override
-  MainAppState createState() => MainAppState();
-}
-
-final Logger _log = Logger('Audible testing');
-
-class MainAppState extends State<MainApp>  {
-  
-  final _AudioSequencePlayer _player = _AudioSequencePlayer("assets/audio/traffic_alerts/");
-  final AssetSource _trafficAudio = AssetSource("tr_traffic.mp3");
-  final AssetSource _bogeyAudio = AssetSource("tr_bogey.mp3");
-  final AssetSource _closingInAudio = AssetSource("tr_cl_closingin.mp3");
-  final AssetSource _overAudio = AssetSource("tr_cl_over.mp3");  
-
-  @override
-  void initState() {
-    super.initState();
-      Logger.root.level = Level.INFO;
-      Logger.root.onRecord.listen((record) {
-        print('${record.time} ${record.level.name} [${record.loggerName}] - ${record.message}');
-      });          
-    _player.preCacheAudioAssets([]).then((value) {
-      _log.shout("sounds loaded");
-    }); 
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      home: Scaffold(
-        body:  const Center(
-          child: Text("Play audio by pushing button below")
-        ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: playIt,
-          child: const Text("Play Audio")
-        ),
-      ),
-    );
-  }
-
-  void playIt() async {
-    _player.playAudioSequence([ _bogeyAudio, _trafficAudio, _closingInAudio, _overAudio ]);
-  }
-}
-*/

@@ -11,9 +11,7 @@ enum DistanceCalloutOption { none, rounded, decimal }
 enum NumberFormatOption { colloquial, individualDigit }
 
 @pragma("vm:prefer-inline")
-double _radians(double deg) {
-  return deg / 180.0 * pi;
-}
+double _radians(double deg) => deg / 180.0 * pi;
 
 @pragma("vm:prefer-inline")
 double _log10(num x) => log(x) / ln10;

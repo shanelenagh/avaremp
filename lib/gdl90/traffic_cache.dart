@@ -1,4 +1,5 @@
 import 'dart:core';
+import 'dart:math';
 import 'dart:ui' as ui;
 import 'package:avaremp/gdl90/traffic_report_message.dart';
 import 'package:avaremp/geo_calculations.dart';
@@ -10,6 +11,7 @@ import 'package:avaremp/gdl90/audible_traffic_alerts.dart';
 
 import '../gps.dart';
 
+/*
 void main()  {
   runApp(const MainApp());
 }
@@ -38,11 +40,11 @@ class MainApp extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [ 
-              CustomPaint(painter: _TrafficPainter(true, .1, 1)),
-              CustomPaint(painter: _TrafficPainter(false, .8, -1)),
-              CustomPaint(painter: _TrafficPainter(false, 1.0, 1)),
-              CustomPaint(painter: _TrafficPainter(false, 1, 0)),
-              CustomPaint(painter: _TrafficPainter(true, .1, -1)) 
+              CustomPaint(painter: TrafficPainter(true, .3, -1)),
+              CustomPaint(painter: TrafficPainter(false, .8, -1)),
+              CustomPaint(painter: TrafficPainter(false, 1.0, 1)),
+              CustomPaint(painter: TrafficPainter(false, 1, 0)),
+              CustomPaint(painter: TrafficPainter(true, .1, -1)) 
             ]
           )
         )
@@ -50,36 +52,54 @@ class MainApp extends StatelessWidget {
     );
   }
 }
+*/
 
-class _TrafficPainter extends CustomPainter {
+class TrafficPainter extends CustomPainter {
 
   final bool _isHeavy;
   final double _opacity;
-  final int _highLowLevel;
+  final double _highLowLevel;
 
-  _TrafficPainter(bool isHeavy, double opacity, int highLowLevel) 
-    : _isHeavy = isHeavy, _opacity = opacity, _highLowLevel = highLowLevel;
+  static double _computeFlightLevelOpacity(double trafficAltitude) {
+    return min(.1, 
 
+    );
+  }
+
+  TrafficPainter(Traffic traffic) 
+    : _isHeavy = false /* TODO: get this from GDL90 message */, _opacity = _computeFlightLevelOpacity(traffic.message.altitude), _highLowLevel = traffic.message.verticalSpeed;
+
+  // TODO: Do list for "colors" (alpha blend) of each of the flight levels
   static final Color _levelColor = const Color(0xFF000000);      // Black
   static final Color _highColor = const Color(0xFF1919D0);       // Mild dark blue
-  static final Color _lowColor = const Color(0xFF00AD00);        // Limish green
-  static final Color _foregroundColor = const Color(0xFFFFFFFF); // White
+  static final Color _lowColor = const Color(0xFF00D000);        // Limish green
+  static final Color _groundColor = const Color(0xFF836539);        // Brown
+  static final Color _lightForegroundColor = const Color(0xFFFFFFFF); // White
+  static final Color _darkForegroundColor = const Color(0xFF000000); // black
+
+
+
+
+  static final ui.Path _heavyAircraft = ui.Path()
+    ..addPolygon([ const Offset(0, 0), const Offset(15, 31), const Offset(16, 31), const Offset(31, 0), 
+      const Offset(16, 4), const Offset(15, 4) ], true);  
+  static final ui.Path _heavyAircraftMinusSign = ui.Path()
+    ..addPolygon([ const Offset(9, 6), const Offset(22, 6), const Offset(22, 7), const Offset(9, 7) ], true);
+  static final ui.Path _heavyAircraftPlusSign = ui.Path()
+    ..addPolygon([ const Offset(15, 17), const Offset(15, 24), const Offset(16, 24), const Offset(16, 17) ], true)
+    ..addPolygon([ const Offset(12, 20), const Offset(19, 20), const Offset(19, 21), const Offset(12, 21) ], true);    
 
   static final ui.Path _lightAircraft = ui.Path()
-    ..addPolygon([ const Offset(0, 0), const Offset(8, 20), const Offset(16, 0), const Offset(8, 8) ], true);
-  static final ui.Path _heavyAircraft = ui.Path()
-    ..addPolygon([ const Offset(0, 0), const Offset(12, 24), const Offset(24, 0), const Offset(12, 3) ], true);  
+    ..addPolygon([ const Offset(4, 4), const Offset(15, 31), const Offset(16, 31), const Offset(27, 4),
+      const Offset(16, 10), const Offset(15, 10) ], true);
   static final ui.Path _lightAircraftPlusSign = ui.Path()
-    ..addPolygon([ const Offset(7, 9), const Offset(9, 9), const Offset(9, 14), const Offset(7, 14) ], true)
-    ..addPolygon([ const Offset(5, 11), const Offset(11, 11), const Offset(11, 12), const Offset(5, 12) ], true);
+    ..addPolygon([ const Offset(15, 17), const Offset(15, 24), const Offset(16, 24), const Offset(16, 17) ], true)
+    ..addPolygon([ const Offset(12, 20), const Offset(19, 20), const Offset(19, 21), const Offset(12, 21) ], true);
   static final ui.Path _lightAircraftMinusSign = ui.Path()
-    ..addPolygon([ const Offset(5, 9), const Offset(11, 9), const Offset(11, 11), const Offset(5, 11) ], true);
-  static final ui.Path _heavyAircraftMinusSign = ui.Path()
-    ..addPolygon([ const Offset(6, 6), const Offset(18, 6), const Offset(18, 8), const Offset(6, 8) ], true);
-  static final ui.Path _heavyAircraftPlusSign = ui.Path()
-    ..addPolygon([ const Offset(11, 10), const Offset(13, 10), const Offset(13, 20), const Offset(11, 20) ], true)
-    ..addPolygon([ const Offset(9, 14), const Offset(15, 14), const Offset(15, 16), const Offset(9, 16) ], true);    
+    ..addPolygon([ const Offset(9, 11), const Offset(22, 11), const Offset(22, 12), const Offset(9, 12) ], true);
 
+
+  /// TODO: Use an image cache to speed painting (premature opt?)
   @override paint(Canvas canvas, Size size) {
     final Color acColor;
     if (_highLowLevel > 0) {
@@ -97,12 +117,14 @@ class _TrafficPainter extends CustomPainter {
       if (_isHeavy) {
         canvas.drawPath(
           _highLowLevel > 0 ? _heavyAircraftPlusSign : _heavyAircraftMinusSign,
-          Paint()..color = Color.fromRGBO(_foregroundColor.red, _foregroundColor.green, _foregroundColor.blue, _opacity)
+          Paint()..color = _highLowLevel >= 0 ? Color.fromRGBO(_lightForegroundColor.red, _lightForegroundColor.green, _lightForegroundColor.blue, _opacity)
+            : Color.fromRGBO(_darkForegroundColor.red, _darkForegroundColor.green, _darkForegroundColor.blue, _opacity)
         );    
       } else {
         canvas.drawPath(
           _highLowLevel > 0 ? _lightAircraftPlusSign : _lightAircraftMinusSign,
-          Paint()..color = Color.fromRGBO(_foregroundColor.red, _foregroundColor.green, _foregroundColor.blue, _opacity)
+          Paint()..color = _highLowLevel >= 0 ? Color.fromRGBO(_lightForegroundColor.red, _lightForegroundColor.green, _lightForegroundColor.blue, _opacity)
+            : Color.fromRGBO(_darkForegroundColor.red, _darkForegroundColor.green, _darkForegroundColor.blue, _opacity)
         ); 
       }
     }
@@ -125,12 +147,14 @@ class Traffic {
   }
 
   Widget getIcon() {
-    return Transform.rotate(angle: message.heading * pi / 180,
-        child: Container(
-          decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(5),
-              color: Colors.black),
-          child:const Icon(Icons.arrow_upward_rounded, color: Colors.white,)));
+    // return Transform.rotate(angle: message.heading * pi / 180,
+    //     child: Container(
+    //       decoration: BoxDecoration(
+    //           borderRadius: BorderRadius.circular(5),
+    //           color: Colors.black),
+    //       child:const Icon(Icons.arrow_upward_rounded, color: Colors.white,)));
+    return Transform.rotate(angle: (message.heading+180 /* Images point down */) * pi / 180.0,
+      child:  CustomPaint(painter: TrafficPainter(false, .7, 1)));
   }
 
   LatLng getCoordinates() {

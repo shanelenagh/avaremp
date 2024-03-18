@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:avaremp/data/main_database_helper.dart';
+import 'package:intl/intl.dart';
 import 'package:path/path.dart';
 import 'package:path/path.dart' as path;
 
@@ -41,6 +42,11 @@ class PathUtils {
     return(filename);
   }
 
+  static String getFilePath(String base, String file) {
+    String id = path.join(base, file);
+    return(id);
+  }
+
   static String getMinimumsFilePath(String base, String name) {
     String afd = path.join(base, "minimums");
     String filename = path.join(afd, "${name[0]}/$name.png");
@@ -62,6 +68,50 @@ class PathUtils {
       ret = [];
     }
     return(ret);
+  }
+
+  static String filename(String url) {
+    return path.split(url).last;
+  }
+
+  static Future<List<String>> getDocumentsNames(String base) async {
+    List<String> ret = [];
+    try {
+      final d = Directory(base);
+      final List<FileSystemEntity> entities = await d.list().toList();
+      for (FileSystemEntity en in entities) {
+        if(isTextFile(en.path) || isPdfFile(en.path) || isKmlFile(en.path)) {
+          ret.add(en.path);
+        }
+      }
+    }
+    catch(e) {
+      ret = [];
+    }
+    return(ret);
+  }
+
+  static bool isTextFile(String url) {
+    return path.extension(url) == ".txt";
+  }
+
+  static bool isPdfFile(String url) {
+    return path.extension(url) == ".pdf";
+  }
+
+  static bool isKmlFile(String url) {
+    return path.extension(url) == ".kml";
+  }
+
+  static Future<void> writeTrack(String base, String data) async {
+    DateTime now = DateTime.now();
+    try {
+      final format = DateFormat('yyyy_MMMM_dd@kk_mm_ss').format(now);
+      final String file = path.join(base, "track_$format.kml");
+      final File f = File(file);
+      await f.writeAsString(data);
+    }
+    catch(e) {}
   }
 
   static Future<List<String>> getPlatesAndCSupSorted(String base, String airport) async {
@@ -112,6 +162,11 @@ class PathUtils {
 
   static bool shouldNotDelete(String name) {
     return _expNoDelete.hasMatch(name);
+  }
+
+  static void deleteFile(String url) {
+    File f = File(url);
+    f.delete();
   }
 
 }

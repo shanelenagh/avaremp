@@ -11,81 +11,53 @@ import 'package:avaremp/gdl90/audible_traffic_alerts.dart';
 
 import '../gps.dart';
 
-/*
-void main()  {
-  runApp(const MainApp());
-}
 
-class MainApp extends StatelessWidget {
-  const MainApp({super.key});
+class _TrafficPainter extends CustomPainter {
 
-  @override
-  Widget build(BuildContext context) {
-    // return MaterialApp(
-    //   home: CustomPaint(painter: _MyPainter()), //Center(child: Text("hello there"))
-    //   theme : ThemeData(
-    //     brightness: Brightness.light,
-    //   ),      
-    // );
-    return MaterialApp(
-      home: Scaffold(
-        body: Container(
-          decoration: const BoxDecoration(
-            image: DecorationImage(
-              image: AssetImage("assets/images/OmaSecClip.png"),
-              fit: BoxFit.cover
-            )
-          ),
-          constraints: const BoxConstraints.expand(),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [ 
-              CustomPaint(painter: TrafficPainter(true, .3, -1)),
-              CustomPaint(painter: TrafficPainter(false, .8, -1)),
-              CustomPaint(painter: TrafficPainter(false, 1.0, 1)),
-              CustomPaint(painter: TrafficPainter(false, 1, 0)),
-              CustomPaint(painter: TrafficPainter(true, .1, -1)) 
-            ]
-          )
-        )
-      )
-    );
-  }
-}
-*/
+  static const double _kMetersToFeetCont = 3.28084;
 
-class TrafficPainter extends CustomPainter {
+  final bool _isLarge;
+  final bool _isAirborne;
+  final int _flightLevelDiff;
+  final int _vspeedDirection;
+  final int _velocityLevel;
 
-  final bool _isHeavy;
-  final double _opacity;
-  final double _highLowLevel;
-
-  static double _computeFlightLevelOpacity(double trafficAltitude) {
-    return min(.1, 
-
-    );
+  static int _computeFlightLevelDiff(double trafficAltitude) {
+    return ((trafficAltitude - Storage().position.altitude.abs() * _kMetersToFeetCont) / 1000).round();
   }
 
-  TrafficPainter(Traffic traffic) 
-    : _isHeavy = false /* TODO: get this from GDL90 message */, _opacity = _computeFlightLevelOpacity(traffic.message.altitude), _highLowLevel = traffic.message.verticalSpeed;
+  static int computeVerticalSpeedDirection(double verticalSpeed) {
+    if (verticalSpeed*3.28 < -100) {
+      return -1;
+    } else if (verticalSpeed*3.28 > 100) {
+      return 1;
+    } else {
+      return 0;
+    }
+  }
 
-  // TODO: Do list for "colors" (alpha blend) of each of the flight levels
-  static final Color _levelColor = const Color(0xFF000000);      // Black
-  static final Color _highColor = const Color(0xFF1919D0);       // Mild dark blue
-  static final Color _lowColor = const Color(0xFF00D000);        // Limish green
-  static final Color _groundColor = const Color(0xFF836539);        // Brown
-  static final Color _lightForegroundColor = const Color(0xFFFFFFFF); // White
-  static final Color _darkForegroundColor = const Color(0xFF000000); // black
+  _TrafficPainter(Traffic traffic) 
+    : _isLarge = [23, 24, 25].contains(traffic.message.emitter), 
+    _isAirborne = traffic.message.airborne,
+    _flightLevelDiff = _computeFlightLevelDiff(traffic.message.altitude), 
+    _vspeedDirection = computeVerticalSpeedDirection(traffic.message.verticalSpeed),
+    _velocityLevel = (traffic.message.velocity*1.94384 / 60.0).round();
 
+  // Colors
+  static const Color _levelColor = Color(0xFF000000);           // Level traffic = Black
+  static const Color _highColor = Color(0xFF1919D0);            // High traffic = Mild dark blue
+  static const Color _lowColor = Color(0xFF00D000);             // Low traffic = Limish green
+  static const Color _groundColor = Color(0xFF836539);          // Ground traffic = Brown
+  static const Color _lightForegroundColor = Color(0xFFFFFFFF); // Overlay for darker bg = White
+  static const Color _darkForegroundColor = Color(0xFF000000);  // Overlay for light bg = Black
 
-
-
-  static final ui.Path _heavyAircraft = ui.Path()
+  // Aircraft outlines and vertical speed plus/minus overlays
+  static final ui.Path _largeAircraft = ui.Path()
     ..addPolygon([ const Offset(0, 0), const Offset(15, 31), const Offset(16, 31), const Offset(31, 0), 
       const Offset(16, 4), const Offset(15, 4) ], true);  
-  static final ui.Path _heavyAircraftMinusSign = ui.Path()
-    ..addPolygon([ const Offset(9, 6), const Offset(22, 6), const Offset(22, 7), const Offset(9, 7) ], true);
-  static final ui.Path _heavyAircraftPlusSign = ui.Path()
+  static final ui.Path _largeAircraftMinusSign = ui.Path()
+    ..addPolygon([ const Offset(10, 7), const Offset(21, 7), const Offset(21, 8), const Offset(10, 8) ], true);
+  static final ui.Path _largeAircraftPlusSign = ui.Path()
     ..addPolygon([ const Offset(15, 17), const Offset(15, 24), const Offset(16, 24), const Offset(16, 17) ], true)
     ..addPolygon([ const Offset(12, 20), const Offset(19, 20), const Offset(19, 21), const Offset(12, 21) ], true);    
 
@@ -96,42 +68,63 @@ class TrafficPainter extends CustomPainter {
     ..addPolygon([ const Offset(15, 17), const Offset(15, 24), const Offset(16, 24), const Offset(16, 17) ], true)
     ..addPolygon([ const Offset(12, 20), const Offset(19, 20), const Offset(19, 21), const Offset(12, 21) ], true);
   static final ui.Path _lightAircraftMinusSign = ui.Path()
-    ..addPolygon([ const Offset(9, 11), const Offset(22, 11), const Offset(22, 12), const Offset(9, 12) ], true);
+    ..addPolygon([ const Offset(10, 12), const Offset(21, 12), const Offset(21, 13), const Offset(10, 13) ], true);
 
-
-  /// TODO: Use an image cache to speed painting (premature opt?)
+  /// Paint arcraft, vpeed overlay, and (horizontal) speed barb
   @override paint(Canvas canvas, Size size) {
+    // Decide opacity, based on dinstance from ownship and whether traffic is on the ground 
+    // Traffic far above or below ownship will be quite transparent, to avoid clutter, and 
+    // ground traffic has a 50% max opacity / min transparency to avoid taxiing or stationary (ADSB-initilized)
+    // traffic from flooding the map
+    final double opacity = min(max(.2, 1 - _flightLevelDiff.abs() * 0.1), _isAirborne ? 1.0 : 0.5);
+    // Define colors using above opacity, with contrasting colors for above, level, below, and ground
     final Color acColor;
-    if (_highLowLevel > 0) {
-      acColor = Color.fromRGBO(_highColor.red, _highColor.green, _highColor.blue, _opacity);
-    } else if (_highLowLevel < 0) {
-      acColor = Color.fromRGBO(_lowColor.red, _lowColor.green, _lowColor.blue, _opacity);
+    if (!_isAirborne) {
+      acColor = Color.fromRGBO(_groundColor.red, _groundColor.green, _groundColor.blue, opacity);
+    } else if (_flightLevelDiff > 0) {
+      acColor = Color.fromRGBO(_highColor.red, _highColor.green, _highColor.blue, opacity);
+    } else if (_flightLevelDiff < 0) {
+      acColor = Color.fromRGBO(_lowColor.red, _lowColor.green, _lowColor.blue, opacity);
     } else {
-      acColor = Color.fromRGBO(_levelColor.red, _levelColor.green, _levelColor.blue, _opacity);
+      acColor = Color.fromRGBO(_levelColor.red, _levelColor.green, _levelColor.blue, opacity);
     }
+    final Color vspeedOverlayColor;
+    if (_flightLevelDiff >= 0) {
+      vspeedOverlayColor = Color.fromRGBO(_lightForegroundColor.red, _lightForegroundColor.green, _lightForegroundColor.blue, opacity);
+    } else {
+      vspeedOverlayColor = Color.fromRGBO(_darkForegroundColor.red, _darkForegroundColor.green, _darkForegroundColor.blue, opacity);
+    }
+
+    // draw aircraft
     canvas.drawPath(
-      _isHeavy ? _heavyAircraft : _lightAircraft,
+      _isLarge ? _largeAircraft : _lightAircraft,
       Paint()..color = acColor
     );
-    if (_highLowLevel != 0) {
-      if (_isHeavy) {
+    
+    // draw vspeed overlay (if not level)
+    if (_vspeedDirection != 0) {
+      if (_isLarge) {
         canvas.drawPath(
-          _highLowLevel > 0 ? _heavyAircraftPlusSign : _heavyAircraftMinusSign,
-          Paint()..color = _highLowLevel >= 0 ? Color.fromRGBO(_lightForegroundColor.red, _lightForegroundColor.green, _lightForegroundColor.blue, _opacity)
-            : Color.fromRGBO(_darkForegroundColor.red, _darkForegroundColor.green, _darkForegroundColor.blue, _opacity)
+          _vspeedDirection > 0 ? _largeAircraftPlusSign : _largeAircraftMinusSign,
+          Paint()..color = vspeedOverlayColor
         );    
       } else {
         canvas.drawPath(
-          _highLowLevel > 0 ? _lightAircraftPlusSign : _lightAircraftMinusSign,
-          Paint()..color = _highLowLevel >= 0 ? Color.fromRGBO(_lightForegroundColor.red, _lightForegroundColor.green, _lightForegroundColor.blue, _opacity)
-            : Color.fromRGBO(_darkForegroundColor.red, _darkForegroundColor.green, _darkForegroundColor.blue, _opacity)
+          _vspeedDirection > 0 ? _lightAircraftPlusSign : _lightAircraftMinusSign,
+          Paint()..color = vspeedOverlayColor
         ); 
       }
     }
+    
+    // draw speed barb
+    canvas.drawLine(const Offset(15, 31), Offset(15, 31+_velocityLevel*2.0), Paint()..color = acColor);
+    canvas.drawLine(const Offset(16, 31), Offset(16, 31+_velocityLevel*2.0), Paint()..color = acColor);
   }
+
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) {
-    return false;
+    final old = oldDelegate as _TrafficPainter;
+    return _flightLevelDiff != old._flightLevelDiff || _vspeedDirection != old._vspeedDirection || _isAirborne != old._isAirborne || _velocityLevel != old._velocityLevel;
   }
 }
 
@@ -154,7 +147,7 @@ class Traffic {
     //           color: Colors.black),
     //       child:const Icon(Icons.arrow_upward_rounded, color: Colors.white,)));
     return Transform.rotate(angle: (message.heading+180 /* Images point down */) * pi / 180.0,
-      child:  CustomPaint(painter: TrafficPainter(false, .7, 1)));
+      child:  CustomPaint(painter: _TrafficPainter(this)));
   }
 
   LatLng getCoordinates() {

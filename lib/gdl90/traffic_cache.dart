@@ -11,22 +11,105 @@ import 'package:avaremp/gdl90/audible_traffic_alerts.dart';
 
 import '../gps.dart';
 
+/*
+void main()  {
+  runApp(const MainApp());
+}
+
+class MainApp extends StatelessWidget {
+  const MainApp({super.key});
+
+  static List<CustomPaint> _buildTrafficPainters() {
+    TrafficReportMessage m1 = TrafficReportMessage(20);
+    m1.altitude = 2200;
+    m1.coordinates = const LatLng(41.2565, 95.9345);
+    m1.emitter = 7;
+    m1.airborne = true;
+    m1.velocity = 400;
+    m1.verticalSpeed = -100;
+    Traffic highDescendingRotor = Traffic(m1);
+    TrafficReportMessage m2 = TrafficReportMessage(20);
+    m2.altitude = 30;
+    m2.coordinates = const LatLng(41.2565, 95.9345);
+    m2.emitter = 3;
+    m2.airborne = true;
+    m2.velocity = 200;
+    m2.verticalSpeed = -100;
+    Traffic lowAscendingHeavy = Traffic(m2);   
+    TrafficReportMessage m3 = TrafficReportMessage(20);
+    m3.altitude = 300*3.2;
+    m3.coordinates = const LatLng(41.2565, 95.9345);
+    m3.emitter = 1;
+    m3.airborne = true;
+    m3.velocity = 200;
+    m3.verticalSpeed = 0;
+    Traffic sameAltLevelLight = Traffic(m3);       
+    return [
+      CustomPaint(painter: _TrafficPainter(highDescendingRotor)),
+      CustomPaint(painter: _TrafficPainter(lowAscendingHeavy)),
+      CustomPaint(painter: _TrafficPainter(sameAltLevelLight))
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // return MaterialApp(
+    //   home: CustomPaint(painter: _MyPainter()), //Center(child: Text("hello there"))
+    //   theme : ThemeData(
+    //     brightness: Brightness.light,
+    //   ),      
+    // );
+    return MaterialApp(
+      home: Scaffold(
+        body: Container(
+          decoration: const BoxDecoration(
+            image: DecorationImage(
+              image: AssetImage("assets/images/OmaSecClip.png"),
+              fit: BoxFit.cover
+            )
+          ),
+          constraints: const BoxConstraints.expand(),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: _buildTrafficPainters()
+          )
+        )
+      )
+    );
+  }
+}
+*/
+
+enum _TrafficAircraftType { regular, large, rotor }
 
 class _TrafficPainter extends CustomPainter {
 
   static const double _kMetersToFeetCont = 3.28084;
 
-  final bool _isLarge;
+  final _TrafficAircraftType _aircraftType;
   final bool _isAirborne;
   final int _flightLevelDiff;
   final int _vspeedDirection;
   final int _velocityLevel;
 
-  static int _computeFlightLevelDiff(double trafficAltitude) {
+  static _TrafficAircraftType _getAircraftType(int adsbEmitterId) {
+    switch(adsbEmitterId) {
+      case 3:
+      case 4:
+      case 5:
+        return _TrafficAircraftType.large;
+      case 7:
+        return _TrafficAircraftType.rotor;
+      default:
+        return _TrafficAircraftType.regular;
+    }
+  }
+
+  static int _getFlightLevelDiff(double trafficAltitude) {
     return ((trafficAltitude - Storage().position.altitude.abs() * _kMetersToFeetCont) / 1000).round();
   }
 
-  static int computeVerticalSpeedDirection(double verticalSpeed) {
+  static int _getVerticalSpeedDirection(double verticalSpeed) {
     if (verticalSpeed*3.28 < -100) {
       return -1;
     } else if (verticalSpeed*3.28 > 100) {
@@ -37,11 +120,13 @@ class _TrafficPainter extends CustomPainter {
   }
 
   _TrafficPainter(Traffic traffic) 
-    : _isLarge = [23, 24, 25].contains(traffic.message.emitter), 
+    : _aircraftType = _getAircraftType(traffic.message.emitter), 
     _isAirborne = traffic.message.airborne,
-    _flightLevelDiff = _computeFlightLevelDiff(traffic.message.altitude), 
-    _vspeedDirection = computeVerticalSpeedDirection(traffic.message.verticalSpeed),
-    _velocityLevel = (traffic.message.velocity*1.94384 / 60.0).round();
+    _flightLevelDiff = _getFlightLevelDiff(traffic.message.altitude), 
+    _vspeedDirection = _getVerticalSpeedDirection(traffic.message.verticalSpeed),
+    _velocityLevel = (traffic.message.velocity*1.94384 / 60.0).round() {
+      //print("Emitter is ${traffic.message.emitter} and type is $_aircraftType for callsign ${traffic.message.callSign}");
+    }
 
   // Colors
   static const Color _levelColor = Color(0xFF000000);           // Level traffic = Black
@@ -68,7 +153,16 @@ class _TrafficPainter extends CustomPainter {
     ..addPolygon([ const Offset(15, 17), const Offset(15, 24), const Offset(16, 24), const Offset(16, 17) ], true)
     ..addPolygon([ const Offset(12, 20), const Offset(19, 20), const Offset(19, 21), const Offset(12, 21) ], true);
   static final ui.Path _lightAircraftMinusSign = ui.Path()
-    ..addPolygon([ const Offset(10, 12), const Offset(21, 12), const Offset(21, 13), const Offset(10, 13) ], true);
+    ..addPolygon([ const Offset(11, 17), const Offset(20, 17), const Offset(20, 18), const Offset(11, 18) ], true);
+
+  static final ui.Path _rotorcraft = ui.Path()
+    ..addOval(const Rect.fromLTRB(9, 11, 22, 31))
+    ..addPolygon([const Offset(29, 11), const Offset(31, 13), const Offset(2, 31), const Offset(0, 29)], true)
+    ..addPolygon([const Offset(9, 15), const Offset(2, 11), const Offset(0, 13), const Offset(10, 19) ], true)
+    ..addPolygon([const Offset(21, 27), const Offset(29, 31), const Offset(31, 29), const Offset(21, 23) ], true)
+    ..addRect(const Rect.fromLTRB(14, 0, 17, 12))
+    ..addRect(const Rect.fromLTRB(10, 3, 21, 7));
+
 
   /// Paint arcraft, vpeed overlay, and (horizontal) speed barb
   @override paint(Canvas canvas, Size size) {
@@ -96,14 +190,22 @@ class _TrafficPainter extends CustomPainter {
     }
 
     // draw aircraft
-    canvas.drawPath(
-      _isLarge ? _largeAircraft : _lightAircraft,
-      Paint()..color = acColor
-    );
+    final ui.Path aircraftShape;
+    switch(_aircraftType) {
+      case _TrafficAircraftType.large:
+        aircraftShape = _largeAircraft;
+        break;
+      case _TrafficAircraftType.rotor:
+        aircraftShape = _rotorcraft;
+        break;
+      default:
+        aircraftShape = _lightAircraft;
+    }
+    canvas.drawPath(aircraftShape, Paint()..color = acColor);
     
     // draw vspeed overlay (if not level)
     if (_vspeedDirection != 0) {
-      if (_isLarge) {
+      if (_aircraftType == _TrafficAircraftType.large) {
         canvas.drawPath(
           _vspeedDirection > 0 ? _largeAircraftPlusSign : _largeAircraftMinusSign,
           Paint()..color = vspeedOverlayColor
@@ -124,7 +226,8 @@ class _TrafficPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) {
     final old = oldDelegate as _TrafficPainter;
-    return _flightLevelDiff != old._flightLevelDiff || _vspeedDirection != old._vspeedDirection || _isAirborne != old._isAirborne || _velocityLevel != old._velocityLevel;
+    return _flightLevelDiff != old._flightLevelDiff || _vspeedDirection != old._vspeedDirection 
+      || _isAirborne != old._isAirborne || _velocityLevel != old._velocityLevel;
   }
 }
 

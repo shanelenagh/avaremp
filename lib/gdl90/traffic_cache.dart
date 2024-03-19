@@ -166,7 +166,7 @@ class _TrafficPainter extends CustomPainter {
   static const double _kDivBy60Mult = 1.0 / 60.0;
   static const double _kDivBy1000Mult = 1.0 / 1000.0;
   // Colors for different aircraft heights, and contrasting overlays
-  static const Color _levelColor = Color(0xFF606060);           // Level traffic = Dark grey
+  static const Color _levelColor = Color(0xFF505050);           // Level traffic = Dark grey
   static const Color _highColor = Color(0xFF2940FF);            // High traffic = Mild dark blue
   static const Color _lowColor = Color(0xFF50D050);             // Low traffic = Limish green
   static const Color _groundColor = Color(0xFF836539);          // Ground traffic = Brown

@@ -224,10 +224,9 @@ class _TrafficPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) {
-    final old = oldDelegate as _TrafficPainter;
-    return _flightLevelDiff != old._flightLevelDiff || _vspeedDirection != old._vspeedDirection 
-      || _isAirborne != old._isAirborne || _velocityLevel != old._velocityLevel;
+  bool shouldRepaint(covariant _TrafficPainter  oldDelegate) {
+    return _flightLevelDiff != oldDelegate._flightLevelDiff || _vspeedDirection != oldDelegate._vspeedDirection 
+      || _isAirborne != oldDelegate._isAirborne || _velocityLevel != oldDelegate._velocityLevel;
   }
 }
 

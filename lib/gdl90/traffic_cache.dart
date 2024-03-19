@@ -94,11 +94,11 @@ class _TrafficPainter extends CustomPainter {
 
   static _TrafficAircraftType _getAircraftType(int adsbEmitterId) {
     switch(adsbEmitterId) {
-      case 3:
-      case 4:
-      case 5:
+      case 3: // Large - 75 000 to 300 000 lbs
+      case 4: // High Vortex Large (e.g., aircraft such as B757) 
+      case 5: // Heavy (ICAO) - > 300 000 lbs
         return _TrafficAircraftType.large;
-      case 7:
+      case 7: // Rotorcraft 
         return _TrafficAircraftType.rotor;
       default:
         return _TrafficAircraftType.regular;
@@ -169,8 +169,9 @@ class _TrafficPainter extends CustomPainter {
     // Decide opacity, based on dinstance from ownship and whether traffic is on the ground 
     // Traffic far above or below ownship will be quite transparent, to avoid clutter, and 
     // ground traffic has a 50% max opacity / min transparency to avoid taxiing or stationary (ADSB-initilized)
-    // traffic from flooding the map
-    final double opacity = min(max(.2, 1 - _flightLevelDiff.abs() * 0.1), _isAirborne ? 1.0 : 0.5);
+    // traffic from flooding the map; opacity decrease is 20% for every 1000 foot diff above or below, with a 
+    // floor of 20% total opacity (max 80% transparency)
+    final double opacity = min(max(.2, (_isAirborne ? 1.0 : 0.5) - _flightLevelDiff.abs() * 0.2), (_isAirborne ? 1.0 : 0.5));
     // Define colors using above opacity, with contrasting colors for above, level, below, and ground
     final Color acColor;
     if (!_isAirborne) {
@@ -219,15 +220,14 @@ class _TrafficPainter extends CustomPainter {
     }
     
     // draw speed barb
-    canvas.drawLine(const Offset(15, 31), Offset(15, 31+_velocityLevel*2.0), Paint()..color = acColor);
-    canvas.drawLine(const Offset(16, 31), Offset(16, 31+_velocityLevel*2.0), Paint()..color = acColor);
+    canvas.drawLine(const Offset(15, 30), Offset(15, 31+_velocityLevel*2.0), Paint()..color = acColor);
+    canvas.drawLine(const Offset(16, 30), Offset(16, 31+_velocityLevel*2.0), Paint()..color = acColor);
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) {
-    final old = oldDelegate as _TrafficPainter;
-    return _flightLevelDiff != old._flightLevelDiff || _vspeedDirection != old._vspeedDirection 
-      || _isAirborne != old._isAirborne || _velocityLevel != old._velocityLevel;
+  bool shouldRepaint(covariant _TrafficPainter oldDelegate) {
+    return _flightLevelDiff != oldDelegate._flightLevelDiff || _vspeedDirection != oldDelegate._vspeedDirection 
+      || _isAirborne != oldDelegate._isAirborne || _velocityLevel != oldDelegate._velocityLevel;
   }
 }
 

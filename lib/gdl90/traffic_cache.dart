@@ -31,7 +31,7 @@ class Traffic {
     //            borderRadius: BorderRadius.circular(5),
     //            color: Colors.black),
     //        child:const Icon(Icons.arrow_upward_rounded, color: Colors.white,)));
-    return Transform.rotate(angle: (message.heading + 180.0 /* Coordinate plane painted down */) * pi  * _kDivBy180,
+    return Transform.rotate(angle: (message.heading + 180.0 /* Image painted down on coordinate plane */) * pi  * _kDivBy180,
       child: CustomPaint(painter: _TrafficPainter(this)));
   }
 
@@ -155,73 +155,25 @@ class TrafficCache {
   }
 }
 
-enum _TrafficAircraftType { regular, large, rotor }
+enum _TrafficAircraftType { regular, large, rotorcraft }
 
 /// Icon painter for different traffic aircraft (ADSB emitter) types, and graduated opacity for vertically distant traffic
 class _TrafficPainter extends CustomPainter {
 
+  // Const's for magic #'s and division speedup
   static const double _kMetersToFeetCont = 3.28084;
   static const double _kMetersPerSecondToKnots = 1.94384;
   static const double _kDivBy60Mult = 1.0 / 60.0;
   static const double _kDivBy1000Mult = 1.0 / 1000.0;
-
-  final _TrafficAircraftType _aircraftType;
-  final bool _isAirborne;
-  final int _flightLevelDiff;
-  final int _vspeedDirection;
-  final int _velocityLevel;
-
-  @pragma("vm:prefer-inline")
-  static _TrafficAircraftType _getAircraftType(int adsbEmitterId) {
-    switch(adsbEmitterId) {
-      case 3: // Large - 75 000 to 300 000 lbs
-      case 4: // High Vortex Large (e.g., aircraft such as B757) 
-      case 5: // Heavy (ICAO) - > 300 000 lbs
-        return _TrafficAircraftType.large;
-      case 7: // Rotorcraft 
-        return _TrafficAircraftType.rotor;
-      default:
-        return _TrafficAircraftType.regular;
-    }
-  }
-
-  @pragma("vm:prefer-inline")
-  static int _getFlightLevelDiff(double trafficAltitude) {
-    return ((trafficAltitude - Storage().position.altitude.abs() * _kMetersToFeetCont) * _kDivBy1000Mult).round();
-  }
-
-  @pragma("vm:prefer-inline")
-  static int _getVerticalSpeedDirection(double verticalSpeed) {
-    if (verticalSpeed*_kMetersToFeetCont < -100) {
-      return -1;
-    } else if (verticalSpeed*_kMetersToFeetCont > 100) {
-      return 1;
-    } else {
-      return 0;
-    }
-  }
-
-  @pragma("vm:prefer-inline")
-  static int _getVelocityLevel(double veloMps) {
-    return (veloMps * _kMetersPerSecondToKnots * _kDivBy60Mult).round();
-  }
-
-  _TrafficPainter(Traffic traffic) 
-    : _aircraftType = _getAircraftType(traffic.message.emitter), 
-    _isAirborne = traffic.message.airborne,
-    _flightLevelDiff = _getFlightLevelDiff(traffic.message.altitude), 
-    _vspeedDirection = _getVerticalSpeedDirection(traffic.message.verticalSpeed),
-    _velocityLevel = _getVelocityLevel(traffic.message.velocity*_kMetersPerSecondToKnots);
-
   // Colors for different aircraft heights, and contrasting overlays
   static const Color _levelColor = Color(0xFF000000);           // Level traffic = Black
   static const Color _highColor = Color(0xFF1919D0);            // High traffic = Mild dark blue
   static const Color _lowColor = Color(0xFF00D000);             // Low traffic = Limish green
   static const Color _groundColor = Color(0xFF836539);          // Ground traffic = Brown
-  static const Color _lightForegroundColor = Color(0xFFFFFFFF); // Overlay for darker bg = White
-  static const Color _darkForegroundColor = Color(0xFF000000);  // Overlay for light bg = Black
+  static const Color _lightForegroundColor = Color(0xFFFFFFFF); // Overlay for darker backgrounds = White
+  static const Color _darkForegroundColor = Color(0xFF000000);  // Overlay for light backgrounds = Black
 
-  // Aircraft outlines and vertical speed plus/minus overlays
+  // Aircraft type outlines and vertical speed plus/minus overlays
   static final ui.Path _largeAircraft = ui.Path()
     ..addPolygon([ const Offset(0, 0), const Offset(15, 31), const Offset(16, 31), const Offset(31, 0), 
       const Offset(16, 4), const Offset(15, 4) ], true);  
@@ -244,15 +196,28 @@ class _TrafficPainter extends CustomPainter {
     ..addPolygon([const Offset(9, 15), const Offset(2, 11), const Offset(0, 13), const Offset(10, 19) ], true)
     ..addPolygon([const Offset(21, 27), const Offset(29, 31), const Offset(31, 29), const Offset(21, 23) ], true)
     ..addRect(const Rect.fromLTRB(14, 0, 17, 12))
-    ..addRect(const Rect.fromLTRB(10, 3, 21, 7));
+    ..addRect(const Rect.fromLTRB(10, 3, 21, 7));  
 
-  /// Paint arcraft, vpeed overlay, and (horizontal) speed barb
+  final _TrafficAircraftType _aircraftType;
+  final bool _isAirborne;
+  final int _flightLevelDiff;
+  final int _vspeedDirection;
+  final int _velocityLevel;
+
+  _TrafficPainter(Traffic traffic) 
+    : _aircraftType = _getAircraftType(traffic.message.emitter), 
+      _isAirborne = traffic.message.airborne,
+      _flightLevelDiff = _getFlightLevelDiff(traffic.message.altitude), 
+      _vspeedDirection = _getVerticalSpeedDirection(traffic.message.verticalSpeed),
+      _velocityLevel = _getVelocityLevel(traffic.message.velocity*_kMetersPerSecondToKnots);
+
+  /// Paint arcraft, vertical speed direction overlay, and (horizontal) speed barb
   @override paint(Canvas canvas, Size size) {
-    // Decide opacity, based on vertical distance from ownship and whether traffic is on the ground 
+    // Decide opacity, based on vertical distance from ownship and whether traffic is on the ground. 
     // Traffic far above or below ownship will be quite transparent, to avoid clutter, and 
     // ground traffic has a 50% max opacity / min transparency to avoid taxiing or stationary (ADSB-initilized)
-    // traffic from flooding the map; opacity decrease is 20% for every 1000 foot diff above or below, with a 
-    // floor of 20% total opacity (max 80% transparency)
+    // traffic from flooding the map. Opacity decrease is 20% for every 1000 foot diff above or below, with a 
+    // floor of 20% total opacity (i.e., max 80% transparency)
     final double opacity = min(max(.2, (_isAirborne ? 1.0 : 0.5) - _flightLevelDiff.abs() * 0.2), (_isAirborne ? 1.0 : 0.5));
     // Define colors using above opacity, with contrasting colors for above, level, below, and ground
     final Color aircraftColor;
@@ -278,7 +243,7 @@ class _TrafficPainter extends CustomPainter {
       case _TrafficAircraftType.large:
         aircraftShape = _largeAircraft;
         break;
-      case _TrafficAircraftType.rotor:
+      case _TrafficAircraftType.rotorcraft:
         aircraftShape = _rotorcraft;
         break;
       default:
@@ -308,7 +273,42 @@ class _TrafficPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _TrafficPainter oldDelegate) {
-    return _flightLevelDiff != oldDelegate._flightLevelDiff || _vspeedDirection != oldDelegate._vspeedDirection 
-      || _isAirborne != oldDelegate._isAirborne || _velocityLevel != oldDelegate._velocityLevel;
+    return _flightLevelDiff != oldDelegate._flightLevelDiff || _velocityLevel != oldDelegate._velocityLevel 
+      ||_vspeedDirection != oldDelegate._vspeedDirection || _isAirborne != oldDelegate._isAirborne;
   }
+
+  @pragma("vm:prefer-inline")
+  static _TrafficAircraftType _getAircraftType(int adsbEmitterCategoryId) {
+    switch(adsbEmitterCategoryId) {
+      case 3: // Large - 75,000 to 300,000 lbs
+      case 4: // High Vortex Large (e.g., aircraft such as B757) 
+      case 5: // Heavy (ICAO) - > 300,000 lbs
+        return _TrafficAircraftType.large;
+      case 7: // Rotorcraft 
+        return _TrafficAircraftType.rotorcraft;
+      default:
+        return _TrafficAircraftType.regular;
+    }
+  }
+
+  @pragma("vm:prefer-inline")
+  static int _getFlightLevelDiff(double trafficAltitude) {
+    return ((trafficAltitude - Storage().position.altitude.abs() * _kMetersToFeetCont) * _kDivBy1000Mult).round();
+  }
+
+  @pragma("vm:prefer-inline")
+  static int _getVerticalSpeedDirection(double verticalSpeed) {
+    if (verticalSpeed*_kMetersToFeetCont < -100) {
+      return -1;
+    } else if (verticalSpeed*_kMetersToFeetCont > 100) {
+      return 1;
+    } else {
+      return 0;
+    }
+  }
+
+  @pragma("vm:prefer-inline")
+  static int _getVelocityLevel(double veloMps) {
+    return (veloMps * _kMetersPerSecondToKnots * _kDivBy60Mult).round();
+  }  
 }

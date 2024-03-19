@@ -11,6 +11,7 @@ import 'package:avaremp/gdl90/audible_traffic_alerts.dart';
 
 import '../gps.dart';
 
+const double _kDivBy180 = 1.0 / 180.0;
 
 class Traffic {
 
@@ -25,12 +26,12 @@ class Traffic {
 
   Widget getIcon() {
     // return Transform.rotate(angle: message.heading * pi / 180,
-    //     child: Container(
-    //       decoration: BoxDecoration(
-    //           borderRadius: BorderRadius.circular(5),
-    //           color: Colors.black),
-    //       child:const Icon(Icons.arrow_upward_rounded, color: Colors.white,)));
-    return Transform.rotate(angle: (message.heading+180 /* Images on coordinate plane painted down */) * pi / 180.0,
+    //      child: Container(
+    //        decoration: BoxDecoration(
+    //            borderRadius: BorderRadius.circular(5),
+    //            color: Colors.black),
+    //        child:const Icon(Icons.arrow_upward_rounded, color: Colors.white,)));
+    return Transform.rotate(angle: (message.heading + 180.0 /* Coordinate plane painted down */) * pi  * _kDivBy180,
       child: CustomPaint(painter: _TrafficPainter(this)));
   }
 
@@ -162,6 +163,7 @@ class _TrafficPainter extends CustomPainter {
   static const double _kMetersToFeetCont = 3.28084;
   static const double _kMetersPerSecondToKnots = 1.94384;
   static const double _kDivBy60Mult = 1.0 / 60.0;
+  static const double _kDivBy1000Mult = 1.0 / 1000.0;
 
   final _TrafficAircraftType _aircraftType;
   final bool _isAirborne;
@@ -185,7 +187,7 @@ class _TrafficPainter extends CustomPainter {
 
   @pragma("vm:prefer-inline")
   static int _getFlightLevelDiff(double trafficAltitude) {
-    return ((trafficAltitude - Storage().position.altitude.abs() * _kMetersToFeetCont) / 1000).round();
+    return ((trafficAltitude - Storage().position.altitude.abs() * _kMetersToFeetCont) * _kDivBy1000Mult).round();
   }
 
   @pragma("vm:prefer-inline")

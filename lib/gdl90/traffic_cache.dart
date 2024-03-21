@@ -283,23 +283,23 @@ class _TrafficPainter extends CustomPainter {
   static final ui.Path _largeAircraft = ui.Path()
     // body
     ..addOval(const Rect.fromLTRB(12, 5, 19, 31))
-    ..addRect(const Rect.fromLTRB(12, 9, 19, 20))..addRect(const Rect.fromLTRB(12, 9, 19, 20)) // duped, for forcing opacity
+    ..addRect(const Rect.fromLTRB(12, 11, 19, 20))..addRect(const Rect.fromLTRB(12, 11, 19, 20)) // duped, for forcing opacity
     ..addOval(const Rect.fromLTRB(12, 0, 19, 25))..addOval(const Rect.fromLTRB(12, 0, 19, 25)) // duped, for forcing opacity
     // left wing
-    ..addPolygon([ const Offset(0, 13), const Offset(0, 16), const Offset(13, 22), const Offset(12, 14) ], true) // duped, for forcing opacity
-    ..addPolygon([ const Offset(0, 13), const Offset(0, 16), const Offset(13, 22), const Offset(12, 14) ], true) // duped, for forcing opacity
+    ..addPolygon([ const Offset(0, 13), const Offset(0, 16), const Offset(15, 22), const Offset(15, 14) ], true) 
+    ..addRect(const Rect.fromLTRB(12, 14, 16, 17))  // splash of paint to cover an odd alias artifact
+    ..addPolygon([ const Offset(0, 13), const Offset(0, 16), const Offset(15, 22), const Offset(15, 14) ], true) // duped, for forcing opacity
     // left engine
-    ..addRRect(RRect.fromRectAndRadius(const Rect.fromLTRB(6, 17, 10, 23), const Radius.circular(1)))  
+    ..addRRect(RRect.fromRectAndRadius(const Rect.fromLTRB(6, 17, 10, 24), const Radius.circular(1)))  
     // left h-stabilizer
     ..addPolygon([ const Offset(9, 0), const Offset(9, 3), const Offset(15, 7), const Offset(15, 1) ], true) 
     // right wing
-    ..addPolygon([ const Offset(31, 13), const Offset(31, 16), const Offset(19, 22), const Offset(19, 14) ], true) // duped, for forcing opacity
-    ..addPolygon([ const Offset(31, 13), const Offset(31, 16), const Offset(19, 22), const Offset(19, 14) ], true) // duped, for forcing opacity
+    ..addPolygon([ const Offset(31, 13), const Offset(31, 16), const Offset(17, 22), const Offset(17, 14) ], true)
+    ..addPolygon([ const Offset(31, 13), const Offset(31, 16), const Offset(17, 22), const Offset(17, 14) ], true) // duped, for forcing opacity
     // right engine
-    ..addRRect(RRect.fromRectAndRadius(const Rect.fromLTRB(21, 17, 25, 23), const Radius.circular(1)))  
+    ..addRRect(RRect.fromRectAndRadius(const Rect.fromLTRB(21, 17, 25, 24), const Radius.circular(1)))  
     // right h-stabilizer
-    ..addPolygon([ const Offset(22, 0), const Offset(22, 3), const Offset(16, 7), const Offset(16, 1) ], true)     
-  ;
+    ..addPolygon([ const Offset(22, 0), const Offset(22, 3), const Offset(16, 7), const Offset(16, 1) ], true);
   static final ui.Path _mediumAircraft = ui.Path()
     ..addPolygon([ const Offset(3, 3), const Offset(15, 31), const Offset(16, 31), const Offset(28, 3), 
       const Offset(16, 5), const Offset(15, 5) ], true);        
@@ -307,10 +307,10 @@ class _TrafficPainter extends CustomPainter {
     ..addPolygon([ const Offset(4, 4), const Offset(15, 31), const Offset(16, 31), const Offset(27, 4),
       const Offset(16, 10), const Offset(15, 10) ], true);
   static final ui.Path _lightAircraft = ui.Path()
-    ..addRRect(RRect.fromRectAndRadius(const Rect.fromLTRB(13, 16, 18, 31), const Radius.circular(2))) // body
-    ..addRRect(RRect.fromRectAndRadius(const Rect.fromLTRB(5, 18, 26, 25), const Radius.circular(1))) // wings
+    ..addRRect(RRect.fromRectAndRadius(const Rect.fromLTRB(13, 18, 18, 31), const Radius.circular(2))) // body
+    ..addRRect(RRect.fromRectAndRadius(const Rect.fromLTRB(5, 19, 26, 26), const Radius.circular(1))) // wings
     ..addRRect(RRect.fromRectAndRadius(const Rect.fromLTRB(11, 7, 20, 11), const Radius.circular(1)))  // h-stabilizer
-    ..addPolygon([ const Offset(13, 19), const Offset(14, 7), const Offset(17, 7), const Offset(18, 19)], true); // rear body
+    ..addPolygon([ const Offset(13, 20), const Offset(15, 7), const Offset(16, 7), const Offset(18, 20)], true); // rear body
   static final ui.Path _rotorcraft = ui.Path()
     ..addOval(const Rect.fromLTRB(9, 11, 22, 31))
     ..addPolygon([const Offset(29, 11), const Offset(31, 13), const Offset(2, 31), const Offset(0, 29)], true)

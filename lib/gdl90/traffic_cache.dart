@@ -37,7 +37,7 @@ class MainApp extends StatelessWidget {
     m2.emitter = 3;
     m2.airborne = true;
     m2.velocity = 600;
-    m2.verticalSpeed = -200;
+    m2.verticalSpeed = -0;
     Traffic lowAscendingHeavy = Traffic(m2);   
 
     // TrafficReportMessage m3 = TrafficReportMessage(20);
@@ -55,7 +55,7 @@ class MainApp extends StatelessWidget {
     m4.emitter = 1;
     m4.airborne = true;
     m4.velocity = 300;
-    m4.verticalSpeed = -200;
+    m4.verticalSpeed = 200;
     Traffic lowAscendingLight = Traffic(m4); 
 
     TrafficReportMessage m5 = TrafficReportMessage(20);
@@ -63,24 +63,24 @@ class MainApp extends StatelessWidget {
     m5.coordinates = const LatLng(41.2565, 95.9345);
     m5.emitter = 0;
     m5.airborne = true;
-    m5.velocity = 70;
+    m5.velocity = 59/1.94384;
     m5.verticalSpeed = 200;
     Traffic lowAscendingUnknown = Traffic(m5);     
           
     return [
-      Transform.scale(scale: 1, 
+      Transform.scale(scale: 6, 
         child: CustomPaint(
           painter: _TrafficPainter(lowAscendingLight))),      
       // Transform.scale(scale: 3, 
       //   child: CustomPaint(          
       //     painter: _TrafficPainter(sameAltAscMedium))),
-      Transform.scale(scale: 1, 
+      Transform.scale(scale: 8, 
         child: CustomPaint(          
           painter: _TrafficPainter(lowAscendingHeavy))),
-      Transform.scale(scale: 1, 
+      Transform.scale(scale: 6, 
         child: CustomPaint(
           painter: _TrafficPainter(highDescendingRotor))),
-      Transform.scale(scale: 1, 
+      Transform.scale(scale: 6, 
         child: CustomPaint(
           painter: _TrafficPainter(lowAscendingUnknown))),                                
     ];
@@ -350,6 +350,7 @@ class _TrafficPainter extends CustomPainter {
   /// Paint arcraft, vertical speed direction overlay, and (horizontal) speed barb--using 
   /// cached picture if possible, and caching new one for next time if not
   @override paint(Canvas canvas, Size size) {
+    // Use pre-painted picture from cache based on relevant icon UI-driving parameters, if possible
     final String pictureKey = "$_isAirborne^$_flightLevelDiff^$_vspeedDirection^$_velocityLevel";
     final ui.Picture? cachedPicture = _pictureCache[pictureKey];
     if (cachedPicture != null) {

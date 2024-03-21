@@ -27,7 +27,7 @@ class MainApp extends StatelessWidget {
     m1.coordinates = const LatLng(41.2565, 95.9345);
     m1.emitter = 7;
     m1.airborne = true;
-    m1.velocity = 0;
+    m1.velocity = 120;
     m1.verticalSpeed = -100;
     Traffic highDescendingRotor = Traffic(m1);
 
@@ -36,25 +36,25 @@ class MainApp extends StatelessWidget {
     m2.coordinates = const LatLng(41.2565, 95.9345);
     m2.emitter = 3;
     m2.airborne = true;
-    m2.velocity = 0;
+    m2.velocity = 600;
     m2.verticalSpeed = -200;
     Traffic lowAscendingHeavy = Traffic(m2);   
 
-    TrafficReportMessage m3 = TrafficReportMessage(20);
-    m3.altitude = 30;
-    m3.coordinates = const LatLng(41.2565, 95.9345);
-    m3.emitter = 2;
-    m3.airborne = true;
-    m3.velocity = 0;
-    m3.verticalSpeed = 300;
-    Traffic sameAltAscMedium = Traffic(m3);   
+    // TrafficReportMessage m3 = TrafficReportMessage(20);
+    // m3.altitude = 30;
+    // m3.coordinates = const LatLng(41.2565, 95.9345);
+    // m3.emitter = 2;
+    // m3.airborne = true;
+    // m3.velocity = 0;
+    // m3.verticalSpeed = 300;
+    // Traffic sameAltAscMedium = Traffic(m3);   
 
     TrafficReportMessage m4 = TrafficReportMessage(20);
     m4.altitude = 0;
     m4.coordinates = const LatLng(41.2565, 95.9345);
     m4.emitter = 1;
     m4.airborne = true;
-    m4.velocity = 0;
+    m4.velocity = 300;
     m4.verticalSpeed = -200;
     Traffic lowAscendingLight = Traffic(m4); 
 
@@ -63,24 +63,24 @@ class MainApp extends StatelessWidget {
     m5.coordinates = const LatLng(41.2565, 95.9345);
     m5.emitter = 0;
     m5.airborne = true;
-    m5.velocity = 0;
+    m5.velocity = 70;
     m5.verticalSpeed = 200;
     Traffic lowAscendingUnknown = Traffic(m5);     
           
     return [
-      Transform.scale(scale: 3, 
+      Transform.scale(scale: 1, 
         child: CustomPaint(
           painter: _TrafficPainter(lowAscendingLight))),      
       // Transform.scale(scale: 3, 
       //   child: CustomPaint(          
       //     painter: _TrafficPainter(sameAltAscMedium))),
-      Transform.scale(scale: 3, 
+      Transform.scale(scale: 1, 
         child: CustomPaint(          
           painter: _TrafficPainter(lowAscendingHeavy))),
-      Transform.scale(scale: 3, 
+      Transform.scale(scale: 1, 
         child: CustomPaint(
           painter: _TrafficPainter(highDescendingRotor))),
-      Transform.scale(scale: 3, 
+      Transform.scale(scale: 1, 
         child: CustomPaint(
           painter: _TrafficPainter(lowAscendingUnknown))),                                
     ];
@@ -258,7 +258,7 @@ class TrafficCache {
   }
 }
 
-enum _TrafficAircraftType { regular, light, large, medium, rotorcraft }
+enum _TrafficAircraftIconType { regular, light, large, medium, rotorcraft }
 
 /// Icon painter for different traffic aircraft (ADSB emitter) types, and graduated opacity for vertically distant traffic
 class _TrafficPainter extends CustomPainter {
@@ -334,7 +334,7 @@ class _TrafficPainter extends CustomPainter {
     ..addPolygon([ const Offset(11, 20), const Offset(20, 20), const Offset(20, 23), const Offset(11, 23) ], true);
  
 
-  final _TrafficAircraftType _aircraftType;
+  final _TrafficAircraftIconType _aircraftType;
   final bool _isAirborne;
   final int _flightLevelDiff;
   final int _vspeedDirection;
@@ -385,16 +385,16 @@ class _TrafficPainter extends CustomPainter {
       // Set aircraft shape
       final ui.Path aircraftShape;
       switch(_aircraftType) {
-        case _TrafficAircraftType.light:
+        case _TrafficAircraftIconType.light:
           aircraftShape = _lightAircraft;
           break;  
-        case _TrafficAircraftType.medium:
+        case _TrafficAircraftIconType.medium:
           aircraftShape = _mediumAircraft;
           break;             
-        case _TrafficAircraftType.large:
+        case _TrafficAircraftIconType.large:
           aircraftShape = _largeAircraft;
           break;
-        case _TrafficAircraftType.rotorcraft:
+        case _TrafficAircraftIconType.rotorcraft:
           aircraftShape = _rotorcraft;
           break;
         default:
@@ -403,8 +403,8 @@ class _TrafficPainter extends CustomPainter {
       
       // Set speed barb
       final ui.Path speedBarb = ui.Path()
-        ..addRect(Rect.fromLTWH(14, 29, 3, _velocityLevel*2.0))
-        ..addRect(Rect.fromLTWH(14, 29, 3, _velocityLevel*2.0)); // second time to prevent alias transparency interaction
+        ..addRect(Rect.fromLTWH(15, 29, 1, _velocityLevel*2.0))
+        ..addRect(Rect.fromLTWH(15, 29, 1, _velocityLevel*2.0)); // second time to prevent alias transparency interaction
 
       // Draw aircraft and speed barb in one shot (saves rendering time/resources)
       aircraftShape.addPath(speedBarb, const Offset(0,0));
@@ -412,7 +412,7 @@ class _TrafficPainter extends CustomPainter {
 
       // draw vspeed overlay (if not level)
       if (_vspeedDirection != 0) {
-        if (_aircraftType == _TrafficAircraftType.light || _aircraftType == _TrafficAircraftType.rotorcraft) {
+        if (_aircraftType == _TrafficAircraftIconType.light || _aircraftType == _TrafficAircraftIconType.rotorcraft) {
           drawingCanvas.drawPath(
             _vspeedDirection > 0 ? _lowerPlusSign : _lowerMinusSign,
             Paint()..color = vspeedOverlayColor
@@ -441,19 +441,19 @@ class _TrafficPainter extends CustomPainter {
   }
 
   @pragma("vm:prefer-inline")
-  static _TrafficAircraftType _getAircraftType(int adsbEmitterCategoryId) {
+  static _TrafficAircraftIconType _getAircraftType(int adsbEmitterCategoryId) {
     switch(adsbEmitterCategoryId) {
       case 1: // Light (ICAO) < 15,500 lbs 
       case 2: // Small - 15,500 to 75,000 lbs 
-        return _TrafficAircraftType.light;
+        return _TrafficAircraftIconType.light;
       case 3: // Large - 75,000 to 300,000 lbs
       case 4: // High Vortex Large (e.g., aircraft such as B757) 
       case 5: // Heavy (ICAO) - > 300,000 lbs
-        return _TrafficAircraftType.large;
+        return _TrafficAircraftIconType.large;
       case 7: // Rotorcraft 
-        return _TrafficAircraftType.rotorcraft;
+        return _TrafficAircraftIconType.rotorcraft;
       default:
-        return _TrafficAircraftType.regular;
+        return _TrafficAircraftIconType.regular;
     }
   }
 

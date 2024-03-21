@@ -307,7 +307,7 @@ class _TrafficPainter extends CustomPainter {
     ..addPolygon([ const Offset(4, 4), const Offset(15, 31), const Offset(16, 31), const Offset(27, 4),
       const Offset(16, 10), const Offset(15, 10) ], true);
   static final ui.Path _lightAircraft = ui.Path()
-    ..addRRect(RRect.fromRectAndRadius(const Rect.fromLTRB(13, 16, 18, 30), const Radius.circular(2))) // body
+    ..addRRect(RRect.fromRectAndRadius(const Rect.fromLTRB(13, 16, 18, 31), const Radius.circular(2))) // body
     ..addRRect(RRect.fromRectAndRadius(const Rect.fromLTRB(5, 18, 26, 25), const Radius.circular(1))) // wings
     ..addRRect(RRect.fromRectAndRadius(const Rect.fromLTRB(11, 7, 20, 11), const Radius.circular(1)))  // h-stabilizer
     ..addPolygon([ const Offset(13, 19), const Offset(14, 7), const Offset(17, 7), const Offset(18, 19)], true); // rear body
@@ -345,7 +345,7 @@ class _TrafficPainter extends CustomPainter {
       _isAirborne = traffic.message.airborne,
       _flightLevelDiff = _getGrossFlightLevelDiff(traffic.message.altitude), 
       _vspeedDirection = _getVerticalSpeedDirection(traffic.message.verticalSpeed),
-      _velocityLevel = _getVelocityLevel(traffic.message.velocity*_kMetersPerSecondToKnots);
+      _velocityLevel = _getVelocityLevel(traffic.message.velocity);
 
   /// Paint arcraft, vertical speed direction overlay, and (horizontal) speed barb--using 
   /// cached picture if possible, and caching new one for next time if not
@@ -403,12 +403,13 @@ class _TrafficPainter extends CustomPainter {
       
       // Set speed barb
       final ui.Path speedBarb = ui.Path()
-        ..addRect(Rect.fromLTWH(15, 29, 1, _velocityLevel*2.0))
-        ..addRect(Rect.fromLTWH(15, 29, 1, _velocityLevel*2.0)); // second time to prevent alias transparency interaction
+        ..addRect(Rect.fromLTWH(15, 31, 1, _velocityLevel*2.0))
+        ..addRect(Rect.fromLTWH(15, 31, 1, _velocityLevel*2.0)); // second time to prevent alias transparency interaction
 
       // Draw aircraft and speed barb in one shot (saves rendering time/resources)
-      aircraftShape.addPath(speedBarb, const Offset(0,0));
-      drawingCanvas.drawPath(aircraftShape, Paint()..color = aircraftColor);
+      final ui.Path aircraftAndSpeedBarb = ui.Path.from(aircraftShape);
+      aircraftAndSpeedBarb.addPath(speedBarb, const Offset(0,0));
+      drawingCanvas.drawPath(aircraftAndSpeedBarb, Paint()..color = aircraftColor);
 
       // draw vspeed overlay (if not level)
       if (_vspeedDirection != 0) {

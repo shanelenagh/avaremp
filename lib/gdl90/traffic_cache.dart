@@ -13,6 +13,109 @@ import '../gps.dart';
 
 const double _kDivBy180 = 1.0 / 180.0;
 
+
+void main()  {
+  runApp(const MainApp());
+}
+
+class MainApp extends StatelessWidget {
+  const MainApp({super.key});
+
+  static List<Widget> _buildTrafficPainters() {
+    TrafficReportMessage m1 = TrafficReportMessage(20);
+    m1.altitude = 500;
+    m1.coordinates = const LatLng(41.2565, 95.9345);
+    m1.emitter = 7;
+    m1.airborne = true;
+    m1.velocity = 0;
+    m1.verticalSpeed = 100;
+    Traffic highDescendingRotor = Traffic(m1);
+
+    TrafficReportMessage m2 = TrafficReportMessage(20);
+    m2.altitude = -1000;
+    m2.coordinates = const LatLng(41.2565, 95.9345);
+    m2.emitter = 3;
+    m2.airborne = true;
+    m2.velocity = 0;
+    m2.verticalSpeed = -200;
+    Traffic lowAscendingHeavy = Traffic(m2);   
+
+    TrafficReportMessage m3 = TrafficReportMessage(20);
+    m3.altitude = 30;
+    m3.coordinates = const LatLng(41.2565, 95.9345);
+    m3.emitter = 2;
+    m3.airborne = true;
+    m3.velocity = 0;
+    m3.verticalSpeed = 300;
+    Traffic sameAltAscMedium = Traffic(m3);   
+
+    TrafficReportMessage m4 = TrafficReportMessage(20);
+    m4.altitude = 0;
+    m4.coordinates = const LatLng(41.2565, 95.9345);
+    m4.emitter = 1;
+    m4.airborne = true;
+    m4.velocity = 0;
+    m4.verticalSpeed = 200;
+    Traffic lowAscendingLight = Traffic(m4); 
+
+    TrafficReportMessage m5 = TrafficReportMessage(20);
+    m5.altitude = -500;
+    m5.coordinates = const LatLng(41.2565, 95.9345);
+    m5.emitter = 0;
+    m5.airborne = true;
+    m5.velocity = 0;
+    m5.verticalSpeed = 200;
+    Traffic lowAscendingUnknown = Traffic(m5);     
+          
+    return [
+      Transform.scale(scale: 1, 
+        child: CustomPaint(
+          painter: _TrafficPainter(lowAscendingLight))),      
+      // Transform.scale(scale: 3, 
+      //   child: CustomPaint(          
+      //     painter: _TrafficPainter(sameAltAscMedium))),
+      Transform.scale(scale: 1, 
+        child: CustomPaint(          
+          painter: _TrafficPainter(lowAscendingHeavy))),
+      Transform.scale(scale: 1, 
+        child: CustomPaint(
+          painter: _TrafficPainter(highDescendingRotor))),
+      Transform.scale(scale: 1, 
+        child: CustomPaint(
+          painter: _TrafficPainter(lowAscendingUnknown))),                                
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // return MaterialApp(
+    //   home: CustomPaint(painter: _MyPainter()), //Center(child: Text("hello there"))
+    //   theme : ThemeData(
+    //     brightness: Brightness.light,
+    //   ),      
+    // );
+    return MaterialApp(
+      home: Scaffold(
+        body: Container(
+          /*
+          decoration: const BoxDecoration(
+            image: DecorationImage(
+              image: AssetImage("assets/images/OmaSecClip.png"),
+              fit: BoxFit.cover
+            )
+          ),
+          */
+          constraints: const BoxConstraints.expand(),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: _buildTrafficPainters()
+          )
+        )
+      )
+    );
+  }
+}
+
 class Traffic {
 
   final TrafficReportMessage message;
@@ -155,7 +258,7 @@ class TrafficCache {
   }
 }
 
-enum _TrafficAircraftType { regular, large, rotorcraft }
+enum _TrafficAircraftType { regular, light, large, medium, rotorcraft }
 
 /// Icon painter for different traffic aircraft (ADSB emitter) types, and graduated opacity for vertically distant traffic
 class _TrafficPainter extends CustomPainter {
@@ -173,30 +276,54 @@ class _TrafficPainter extends CustomPainter {
   static const Color _lightForegroundColor = Color(0xFFFFFFFF); // Overlay for darker backgrounds = White
   static const Color _darkForegroundColor = Color(0xFF000000);  // Overlay for light backgrounds = Black
 
-  // Aircraft type outlines and vertical speed plus/minus overlays
-  static final ui.Path _largeAircraft = ui.Path()
-    ..addPolygon([ const Offset(0, 0), const Offset(15, 31), const Offset(16, 31), const Offset(31, 0), 
-      const Offset(16, 4), const Offset(15, 4) ], true);  
-  static final ui.Path _largeAircraftMinusSign = ui.Path()
-    ..addPolygon([ const Offset(10, 7), const Offset(21, 7), const Offset(21, 8), const Offset(10, 8) ], true);
-  static final ui.Path _largeAircraftPlusSign = ui.Path()
-    ..addPolygon([ const Offset(15, 17), const Offset(15, 24), const Offset(16, 24), const Offset(16, 17) ], true)
-    ..addPolygon([ const Offset(12, 20), const Offset(19, 20), const Offset(19, 21), const Offset(12, 21) ], true);    
-  static final ui.Path _lightAircraft = ui.Path()
+  // Aircraft type outlines
+  final ui.Path _largeAircraft = ui.Path()
+    // body
+    ..addOval(const Rect.fromLTRB(12, 5, 19, 31))
+    ..addRect(const Rect.fromLTRB(12, 9, 19, 20))..addRect(const Rect.fromLTRB(12, 9, 19, 20))
+    ..addOval(const Rect.fromLTRB(12, 0, 19, 25))..addOval(const Rect.fromLTRB(12, 0, 19, 25)) 
+    // left wing
+    ..addPolygon([ const Offset(0, 13), const Offset(0, 16), const Offset(13, 22), const Offset(12, 14) ], true) 
+    ..addPolygon([ const Offset(0, 13), const Offset(0, 16), const Offset(13, 22), const Offset(12, 14) ], true) 
+    // left engine
+    ..addRRect(RRect.fromRectAndRadius(const Rect.fromLTRB(6, 17, 10, 23), const Radius.circular(1)))  
+    // left h-stabilizer
+    ..addPolygon([ const Offset(9, 0), const Offset(9, 3), const Offset(15, 6), const Offset(15, 1) ], true) 
+    // right wing
+    ..addPolygon([ const Offset(31, 13), const Offset(31, 16), const Offset(19, 22), const Offset(19, 14) ], true) 
+    ..addPolygon([ const Offset(31, 13), const Offset(31, 16), const Offset(19, 22), const Offset(19, 14) ], true) 
+    // right engine
+    ..addRRect(RRect.fromRectAndRadius(const Rect.fromLTRB(21, 17, 25, 23), const Radius.circular(1)))  
+    // right h-stabilizer
+    ..addPolygon([ const Offset(22, 0), const Offset(22, 3), const Offset(16, 6), const Offset(16, 1) ], true)     
+  ;
+  final ui.Path _mediumAircraft = ui.Path()
+    ..addPolygon([ const Offset(3, 3), const Offset(15, 31), const Offset(16, 31), const Offset(28, 3), 
+      const Offset(16, 5), const Offset(15, 5) ], true);        
+  final ui.Path _regularSmallAircraft = ui.Path()
     ..addPolygon([ const Offset(4, 4), const Offset(15, 31), const Offset(16, 31), const Offset(27, 4),
       const Offset(16, 10), const Offset(15, 10) ], true);
-  static final ui.Path _lightAircraftPlusSign = ui.Path()
-    ..addPolygon([ const Offset(15, 17), const Offset(15, 24), const Offset(16, 24), const Offset(16, 17) ], true)
-    ..addPolygon([ const Offset(12, 20), const Offset(19, 20), const Offset(19, 21), const Offset(12, 21) ], true);
-  static final ui.Path _lightAircraftMinusSign = ui.Path()
-    ..addPolygon([ const Offset(11, 17), const Offset(20, 17), const Offset(20, 18), const Offset(11, 18) ], true);
-  static final ui.Path _rotorcraft = ui.Path()
+  final ui.Path _lightAircraft = ui.Path()
+    ..addRRect(RRect.fromRectAndRadius(const Rect.fromLTRB(13, 13, 18, 30), const Radius.circular(2))) //(const Rect.fromLTRB(13, 13, 18, 30)) // body
+    ..addRRect(RRect.fromRectAndRadius(const Rect.fromLTRB(4, 15, 27, 22), const Radius.circular(1))) // wings
+    ..addRRect(RRect.fromRectAndRadius(const Rect.fromLTRB(11, 7, 20, 11), const Radius.circular(1)))  // h-stabilizer
+    ..addPolygon([ const Offset(13, 16), const Offset(14, 7), const Offset(17, 7), const Offset(18, 16)], true); // rear body
+  final ui.Path _rotorcraft = ui.Path()
     ..addOval(const Rect.fromLTRB(9, 11, 22, 31))
     ..addPolygon([const Offset(29, 11), const Offset(31, 13), const Offset(2, 31), const Offset(0, 29)], true)
-    ..addPolygon([const Offset(9, 15), const Offset(2, 11), const Offset(0, 13), const Offset(10, 19) ], true)
-    ..addPolygon([const Offset(21, 27), const Offset(29, 31), const Offset(31, 29), const Offset(21, 23) ], true)
-    ..addRect(const Rect.fromLTRB(14, 0, 17, 12))
-    ..addRect(const Rect.fromLTRB(10, 3, 21, 7));  
+    ..addPolygon([const Offset(29, 11), const Offset(31, 13), const Offset(2, 31), const Offset(0, 29)], true)
+    ..addPolygon([const Offset(2, 11), const Offset(0, 13), const Offset(29, 31), const Offset(31, 29) ], true)
+    ..addPolygon([const Offset(2, 11), const Offset(0, 13), const Offset(29, 31), const Offset(31, 29) ], true) // and again, to force opaque at inersection
+    ..addRect(const Rect.fromLTRB(15, 0, 16, 12))
+    ..addRRect(RRect.fromLTRBR(10, 3, 21, 7, const Radius.circular(1))); //(const Rect.fromLTRB(10, 3, 21, 7));       
+  // vertical speed plus/minus overlays
+  final ui.Path _plusSign = ui.Path()
+    ..addPolygon([ const Offset(14, 14), const Offset(14, 23), const Offset(17, 23), const Offset(17, 14) ], true)
+    ..addPolygon([ const Offset(11, 17), const Offset(20, 17), const Offset(20, 20), const Offset(11, 20) ], true)
+    ..addPolygon([ const Offset(11, 17), const Offset(20, 17), const Offset(20, 20), const Offset(11, 20) ], true);  // and again, to force opaque at inersection
+  final ui.Path _minusSign = ui.Path()
+    ..addPolygon([ const Offset(11, 16), const Offset(20, 16), const Offset(20, 19), const Offset(11, 19) ], true);
+ 
 
   final _TrafficAircraftType _aircraftType;
   final bool _isAirborne;
@@ -237,9 +364,15 @@ class _TrafficPainter extends CustomPainter {
       vspeedOverlayColor = Color.fromRGBO(_darkForegroundColor.red, _darkForegroundColor.green, _darkForegroundColor.blue, opacity);
     }
 
-    // draw aircraft
+    // Set aircraft shape
     final ui.Path aircraftShape;
     switch(_aircraftType) {
+      case _TrafficAircraftType.light:
+        aircraftShape = _lightAircraft;
+        break;  
+      case _TrafficAircraftType.medium:
+        aircraftShape = _mediumAircraft;
+        break;             
       case _TrafficAircraftType.large:
         aircraftShape = _largeAircraft;
         break;
@@ -247,28 +380,25 @@ class _TrafficPainter extends CustomPainter {
         aircraftShape = _rotorcraft;
         break;
       default:
-        aircraftShape = _lightAircraft;
+        aircraftShape = _regularSmallAircraft;
     }
-    canvas.drawPath(aircraftShape, Paint()..color = aircraftColor);
     
+    // Set speed barb
+    final ui.Path speedBarb = ui.Path()
+      ..addRect(Rect.fromLTWH(14, 29, 3, _velocityLevel*2.0))
+      ..addRect(Rect.fromLTWH(14, 29, 3, _velocityLevel*2.0)); // second time to prevent alias transparency interaction
+
+    // Draw aircraft and speed barb in one shot (saves rendering time/resources)
+    aircraftShape.addPath(speedBarb, const Offset(0,0));
+    canvas.drawPath(aircraftShape, Paint()..color = aircraftColor);
+
     // draw vspeed overlay (if not level)
     if (_vspeedDirection != 0) {
-      if (_aircraftType == _TrafficAircraftType.large) {
-        canvas.drawPath(
-          _vspeedDirection > 0 ? _largeAircraftPlusSign : _largeAircraftMinusSign,
-          Paint()..color = vspeedOverlayColor
-        );    
-      } else {
-        canvas.drawPath(
-          _vspeedDirection > 0 ? _lightAircraftPlusSign : _lightAircraftMinusSign,
-          Paint()..color = vspeedOverlayColor
-        ); 
-      }
-    }
-    
-    // draw speed barb
-    canvas.drawLine(const Offset(15, 30), Offset(15, 31+_velocityLevel*2.0), Paint()..color = aircraftColor);
-    canvas.drawLine(const Offset(16, 30), Offset(16, 31+_velocityLevel*2.0), Paint()..color = aircraftColor);
+      canvas.drawPath(
+        _vspeedDirection > 0 ? _plusSign : _minusSign,
+        Paint()..color = vspeedOverlayColor
+      );    
+    }      
   }
 
   @override
@@ -280,6 +410,9 @@ class _TrafficPainter extends CustomPainter {
   @pragma("vm:prefer-inline")
   static _TrafficAircraftType _getAircraftType(int adsbEmitterCategoryId) {
     switch(adsbEmitterCategoryId) {
+      case 1: // Light
+      case 2: // Small
+        return _TrafficAircraftType.light;
       case 3: // Large - 75,000 to 300,000 lbs
       case 4: // High Vortex Large (e.g., aircraft such as B757) 
       case 5: // Heavy (ICAO) - > 300,000 lbs

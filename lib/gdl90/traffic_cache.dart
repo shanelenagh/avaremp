@@ -263,6 +263,9 @@ enum _TrafficAircraftType { regular, light, large, medium, rotorcraft }
 /// Icon painter for different traffic aircraft (ADSB emitter) types, and graduated opacity for vertically distant traffic
 class _TrafficPainter extends CustomPainter {
 
+  // Static picture cache, for faster rendering of similar images
+  static final Map<String,ui.Picture> _pictureCache = {};
+
   // Const's for magic #'s and division speedup
   static const double _kMetersToFeetCont = 3.28084;
   static const double _kMetersPerSecondToKnots = 1.94384;
@@ -340,78 +343,95 @@ class _TrafficPainter extends CustomPainter {
   _TrafficPainter(Traffic traffic) 
     : _aircraftType = _getAircraftType(traffic.message.emitter), 
       _isAirborne = traffic.message.airborne,
-      _flightLevelDiff = _getFlightLevelDiff(traffic.message.altitude), 
+      _flightLevelDiff = _getGrossFlightLevelDiff(traffic.message.altitude), 
       _vspeedDirection = _getVerticalSpeedDirection(traffic.message.verticalSpeed),
       _velocityLevel = _getVelocityLevel(traffic.message.velocity*_kMetersPerSecondToKnots);
 
-  /// Paint arcraft, vertical speed direction overlay, and (horizontal) speed barb
+  /// Paint arcraft, vertical speed direction overlay, and (horizontal) speed barb--using 
+  /// cached picture if possible, and caching new one for next time if not
   @override paint(Canvas canvas, Size size) {
-    // Decide opacity, based on vertical distance from ownship and whether traffic is on the ground. 
-    // Traffic far above or below ownship will be quite transparent, to avoid clutter, and 
-    // ground traffic has a 50% max opacity / min transparency to avoid taxiing or stationary (ADSB-initilized)
-    // traffic from flooding the map. Opacity decrease is 20% for every 1000 foot diff above or below, with a 
-    // floor of 20% total opacity (i.e., max 80% transparency)
-    final double opacity = min(max(.2, (_isAirborne ? 1.0 : 0.5) - _flightLevelDiff.abs() * 0.2), (_isAirborne ? 1.0 : 0.5));
-    // Define colors using above opacity, with contrasting colors for above, level, below, and ground
-    final Color aircraftColor;
-    if (!_isAirborne) {
-      aircraftColor = Color.fromRGBO(_groundColor.red, _groundColor.green, _groundColor.blue, opacity);
-    } else if (_flightLevelDiff > 0) {
-      aircraftColor = Color.fromRGBO(_highColor.red, _highColor.green, _highColor.blue, opacity);
-    } else if (_flightLevelDiff < 0) {
-      aircraftColor = Color.fromRGBO(_lowColor.red, _lowColor.green, _lowColor.blue, opacity);
+    final String pictureKey = "$_isAirborne^$_flightLevelDiff^$_vspeedDirection^$_velocityLevel";
+    final ui.Picture? cachedPicture = _pictureCache[pictureKey];
+    if (cachedPicture != null) {
+      canvas.drawPicture(cachedPicture);
     } else {
-      aircraftColor = Color.fromRGBO(_levelColor.red, _levelColor.green, _levelColor.blue, opacity);
-    }
-    final Color vspeedOverlayColor;
-    if (_flightLevelDiff >= 0) {
-      vspeedOverlayColor = Color.fromRGBO(_lightForegroundColor.red, _lightForegroundColor.green, _lightForegroundColor.blue, opacity);
-    } else {
-      vspeedOverlayColor = Color.fromRGBO(_darkForegroundColor.red, _darkForegroundColor.green, _darkForegroundColor.blue, opacity);
-    }
+      final ui.PictureRecorder recorder = ui.PictureRecorder();
+      final ui.Canvas drawingCanvas = Canvas(recorder);
 
-    // Set aircraft shape
-    final ui.Path aircraftShape;
-    switch(_aircraftType) {
-      case _TrafficAircraftType.light:
-        aircraftShape = _lightAircraft;
-        break;  
-      case _TrafficAircraftType.medium:
-        aircraftShape = _mediumAircraft;
-        break;             
-      case _TrafficAircraftType.large:
-        aircraftShape = _largeAircraft;
-        break;
-      case _TrafficAircraftType.rotorcraft:
-        aircraftShape = _rotorcraft;
-        break;
-      default:
-        aircraftShape = _regularSmallAircraft;
-    }
-    
-    // Set speed barb
-    final ui.Path speedBarb = ui.Path()
-      ..addRect(Rect.fromLTWH(14, 29, 3, _velocityLevel*2.0))
-      ..addRect(Rect.fromLTWH(14, 29, 3, _velocityLevel*2.0)); // second time to prevent alias transparency interaction
-
-    // Draw aircraft and speed barb in one shot (saves rendering time/resources)
-    aircraftShape.addPath(speedBarb, const Offset(0,0));
-    canvas.drawPath(aircraftShape, Paint()..color = aircraftColor);
-
-    // draw vspeed overlay (if not level)
-    if (_vspeedDirection != 0) {
-      if (_aircraftType == _TrafficAircraftType.light || _aircraftType == _TrafficAircraftType.rotorcraft) {
-        canvas.drawPath(
-          _vspeedDirection > 0 ? _lowerPlusSign : _lowerMinusSign,
-          Paint()..color = vspeedOverlayColor
-        ); 
+      // Decide opacity, based on vertical distance from ownship and whether traffic is on the ground. 
+      // Traffic far above or below ownship will be quite transparent, to avoid clutter, and 
+      // ground traffic has a 50% max opacity / min transparency to avoid taxiing or stationary (ADSB-initilized)
+      // traffic from flooding the map. Opacity decrease is 20% for every 1000 foot diff above or below, with a 
+      // floor of 20% total opacity (i.e., max 80% transparency)
+      final double opacity = min(max(.2, (_isAirborne ? 1.0 : 0.5) - _flightLevelDiff.abs() * 0.2), (_isAirborne ? 1.0 : 0.5));
+      // Define colors using above opacity, with contrasting colors for above, level, below, and ground
+      final Color aircraftColor;
+      if (!_isAirborne) {
+        aircraftColor = Color.fromRGBO(_groundColor.red, _groundColor.green, _groundColor.blue, opacity);
+      } else if (_flightLevelDiff > 0) {
+        aircraftColor = Color.fromRGBO(_highColor.red, _highColor.green, _highColor.blue, opacity);
+      } else if (_flightLevelDiff < 0) {
+        aircraftColor = Color.fromRGBO(_lowColor.red, _lowColor.green, _lowColor.blue, opacity);
       } else {
-        canvas.drawPath(
-          _vspeedDirection > 0 ? _plusSign : _minusSign,
-          Paint()..color = vspeedOverlayColor
-        );    
+        aircraftColor = Color.fromRGBO(_levelColor.red, _levelColor.green, _levelColor.blue, opacity);
       }
-    }      
+      final Color vspeedOverlayColor;
+      if (_flightLevelDiff >= 0) {
+        vspeedOverlayColor = Color.fromRGBO(_lightForegroundColor.red, _lightForegroundColor.green, _lightForegroundColor.blue, opacity);
+      } else {
+        vspeedOverlayColor = Color.fromRGBO(_darkForegroundColor.red, _darkForegroundColor.green, _darkForegroundColor.blue, opacity);
+      }
+
+      // Set aircraft shape
+      final ui.Path aircraftShape;
+      switch(_aircraftType) {
+        case _TrafficAircraftType.light:
+          aircraftShape = _lightAircraft;
+          break;  
+        case _TrafficAircraftType.medium:
+          aircraftShape = _mediumAircraft;
+          break;             
+        case _TrafficAircraftType.large:
+          aircraftShape = _largeAircraft;
+          break;
+        case _TrafficAircraftType.rotorcraft:
+          aircraftShape = _rotorcraft;
+          break;
+        default:
+          aircraftShape = _regularSmallAircraft;
+      }
+      
+      // Set speed barb
+      final ui.Path speedBarb = ui.Path()
+        ..addRect(Rect.fromLTWH(14, 29, 3, _velocityLevel*2.0))
+        ..addRect(Rect.fromLTWH(14, 29, 3, _velocityLevel*2.0)); // second time to prevent alias transparency interaction
+
+      // Draw aircraft and speed barb in one shot (saves rendering time/resources)
+      aircraftShape.addPath(speedBarb, const Offset(0,0));
+      drawingCanvas.drawPath(aircraftShape, Paint()..color = aircraftColor);
+
+      // draw vspeed overlay (if not level)
+      if (_vspeedDirection != 0) {
+        if (_aircraftType == _TrafficAircraftType.light || _aircraftType == _TrafficAircraftType.rotorcraft) {
+          drawingCanvas.drawPath(
+            _vspeedDirection > 0 ? _lowerPlusSign : _lowerMinusSign,
+            Paint()..color = vspeedOverlayColor
+          ); 
+        } else {
+          drawingCanvas.drawPath(
+            _vspeedDirection > 0 ? _plusSign : _minusSign,
+            Paint()..color = vspeedOverlayColor
+          );    
+        }
+      }      
+
+      // store this fresh image to the cache for next time
+      final ui.Picture newPicture = recorder.endRecording();
+      _pictureCache[pictureKey] = newPicture;
+
+      // now draw the new picture to this widget's canvas
+      canvas.drawPicture(newPicture);
+    }
   }
 
   @override
@@ -423,8 +443,8 @@ class _TrafficPainter extends CustomPainter {
   @pragma("vm:prefer-inline")
   static _TrafficAircraftType _getAircraftType(int adsbEmitterCategoryId) {
     switch(adsbEmitterCategoryId) {
-      case 1: // Light
-      case 2: // Small
+      case 1: // Light (ICAO) < 15,500 lbs 
+      case 2: // Small - 15,500 to 75,000 lbs 
         return _TrafficAircraftType.light;
       case 3: // Large - 75,000 to 300,000 lbs
       case 4: // High Vortex Large (e.g., aircraft such as B757) 
@@ -437,9 +457,10 @@ class _TrafficPainter extends CustomPainter {
     }
   }
 
+  /// Break flight levels into 1K chunks (bounding upper/lower to relevent opcacity limits to make image caching more efficient)
   @pragma("vm:prefer-inline")
-  static int _getFlightLevelDiff(double trafficAltitude) {
-    return ((trafficAltitude - Storage().position.altitude.abs() * _kMetersToFeetCont) * _kDivBy1000Mult).round();
+  static int _getGrossFlightLevelDiff(double trafficAltitude) {
+    return max(min(((trafficAltitude - Storage().position.altitude.abs() * _kMetersToFeetCont) * _kDivBy1000Mult).round(), 5), -5);
   }
 
   @pragma("vm:prefer-inline")

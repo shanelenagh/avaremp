@@ -47,14 +47,10 @@ class Traffic {
     return (DateTime.now().millisecondsSinceEpoch - message.time.millisecondsSinceEpoch) * _kMinutesPerMillisecond > 1; // CPU flameshart => optimization
   }
 
-  Widget getIcon() {
-    // return Transform.rotate(angle: message.heading * pi / 180,
-    //      child: Container(
-    //        decoration: BoxDecoration(
-    //            borderRadius: BorderRadius.circular(5),
-    //            color: Colors.black),
-    //        child:const Icon(Icons.arrow_upward_rounded, color: Colors.white,)));
-    return Transform.rotate(angle: (message.heading + 180.0 /* Image painted down on coordinate plane */) * pi  * _kDivBy180,
+  Widget getIcon(bool isNorthUp) {
+    print("$isNorthUp: ${Storage().position.heading} - ${(message.heading + 180.0 + (isNorthUp ? 0 : Storage().position.heading)) % 360}");
+    return Transform.rotate(angle: ((message.heading + 180.0 /* Image painted down on coordinate plane */ 
+        + (isNorthUp ? 0 : 0 /* Storage().position.heading */ )) % 360) * pi  * _kDivBy180,
       child: CustomPaint(painter: TrafficPainter(this)));
   }
 

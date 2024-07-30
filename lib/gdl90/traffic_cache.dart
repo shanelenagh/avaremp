@@ -137,7 +137,7 @@ class TrafficCache {
         _traffic[i] = trafficNew;
 
         // process any audible alerts from traffic (if enabled)
-        handleAudibleAlerts();
+        handleAudibleAlerts(singleTraffic: trafficNew);
 
         return;
       }
@@ -155,7 +155,7 @@ class TrafficCache {
     _traffic.sort(_trafficSort);
 
     // process any audible alerts from traffic (if enabled)
-    handleAudibleAlerts();
+    handleAudibleAlerts(singleTraffic: trafficNew);
 
   }
 
@@ -184,7 +184,7 @@ class TrafficCache {
     return 0;
   }
 
-  void handleAudibleAlerts() {
+  void handleAudibleAlerts({ Traffic? singleTraffic }) {
     // If alerts are running or in the required delay, don't kick off processing again--just note that we want another run later
     if (_audibleAlertsHandling) {
       _audibleAlertsRequested = true;
@@ -194,8 +194,8 @@ class TrafficCache {
       _audibleAlertsHandling = true;   
       TrafficAlerts.getAndStartTrafficAlerts().then((alerts) {
         // TODO: Set all of the "pref" settings from new Storage params (which in turn have a config UI?)
-        alerts?.processTrafficForAudibleAlerts(_traffic, Storage().position, Storage().lastMsGpsSignal, Storage().vspeed, 
-          Storage().airborne);
+        alerts?.processTrafficForAudibleAlerts(singleTraffic != null ? [ singleTraffic ] :_traffic, 
+          Storage().position, Storage().lastMsGpsSignal, Storage().vspeed, Storage().airborne);
         _audibleAlertsRequested = false;
         Future.delayed(const Duration(milliseconds: _kAudibleAlertCallMinDelayMs), () {
           _audibleAlertsHandling = false;

@@ -117,7 +117,6 @@ class TrafficAlerts {
   final AssetSource _pointAudio = AssetSource("tr_point.mp3");
 
   final List<_AlertItem> _alertQueue = [];
-  final Map<int, int> _lastTrafficPositionUpdateTimeMap = {};
   final Map<int, int> _lastTrafficAlertTimeMap = {};
   final List<int> _phoneticAlphaIcaoSequenceQueue = [];
 
@@ -272,13 +271,8 @@ class TrafficAlerts {
       if (traffic == null || !(traffic.message.airborne)) {
         continue;
       }
-      final int trafficPositionTimeCalcUpdateValue = Constants.hashInts([ traffic.message.time.millisecondsSinceEpoch, ownshipUpdateTimeMs ]);
-      final int trafficKey = _getTrafficKey(traffic);
-      final int? lastTrafficPositionUpdateValue = _lastTrafficPositionUpdateTimeMap[trafficKey];
-      final bool hasUpdate;
       // Ensure traffic has been recently updated, and if within the alerts threshold "cylinder", upsert it to the alert queue
-      if ((hasUpdate = lastTrafficPositionUpdateValue == null || lastTrafficPositionUpdateValue != trafficPositionTimeCalcUpdateValue)
-          && (traffic.alertLevel == TrafficAlertLevel.advisory || traffic.alertLevel == TrafficAlertLevel.resolution)) 
+      if (traffic.alertLevel == TrafficAlertLevel.advisory || traffic.alertLevel == TrafficAlertLevel.resolution) 
       {
         hasInserts = hasInserts ||
             _upsertTrafficAudibleAlertQueue(_AlertItem(traffic, ownshipLocation,
@@ -290,13 +284,9 @@ class TrafficAlerts {
                   ? _ClosingEvent(traffic) 
                   : null));
           
-      } else if (hasUpdate) {
+      } else {
         // Prune out any alert for this traffic that no longer qualifies (e.g., distance exceeded before able to process/speak)
         _alertQueue.removeWhere((element) => element._traffic.message.icao == traffic.message.icao);
-      }
-      if (hasUpdate) {
-        // Only update position map if there is an update
-        _lastTrafficPositionUpdateTimeMap[trafficKey] = trafficPositionTimeCalcUpdateValue;
       }
     }
 

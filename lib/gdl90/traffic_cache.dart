@@ -534,7 +534,7 @@ class TrafficVerticalStatusPainter extends AbstractCachedCustomPainter {
     final String directionText = (_vspeedDirection > 0 ? "↑" : (_vspeedDirection < 0 ? "↓": ""));
     // Draw transluscent bounding box for greater visibility (especially sectionals)
     final ui.Path statusBoundingBox = ui.Path()
-      ..addRect(Rect.fromLTRB(_offsetX, _offsetY, _offsetX+(vertLocationMsg.length+directionText.length)*_charPixeslWidth+_charPixeslWidth, _offsetY+24)); 
+      ..addRect(Rect.fromLTRB(_offsetX, _offsetY, _offsetX+(vertLocationMsg.length+directionText.length)*_charPixeslWidth+_charPixeslWidth, _offsetY+max(_vertSpeedArrowFontSize, _vertLocationFontSize))); 
     canvas.drawPath(statusBoundingBox, _boundingBoxPaint);   
     // Paint vertical position  
     final vertLocationTextPainter = TextPainter(text: TextSpan(text: vertLocationMsg, style: _vertLocationTextStyle), textDirection: TextDirection.ltr);
@@ -550,7 +550,7 @@ class TrafficVerticalStatusPainter extends AbstractCachedCustomPainter {
         minWidth: 0,
         maxWidth: directionText.length*_charPixeslWidth+_charPixeslWidth,
       );   
-      verticalSpeedTextPainter.paint(canvas, Offset(_offsetX+(vertLocationMsg.length*_charPixeslWidth), _offsetY-(_vertSpeedArrowFontSize-_vertLocationFontSize)));  
+      verticalSpeedTextPainter.paint(canvas, Offset(_offsetX+(vertLocationMsg.length*_charPixeslWidth), _offsetY));  
     }
   }
 

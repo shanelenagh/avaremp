@@ -550,7 +550,7 @@ class TrafficVerticalStatusPainter extends AbstractCachedCustomPainter {
         minWidth: 0,
         maxWidth: directionText.length*_charPixeslWidth+_charPixeslWidth,
       );   
-      verticalSpeedTextPainter.paint(canvas, Offset(_offsetX+(vertLocationMsg.length*_charPixeslWidth), _offsetY));  
+      verticalSpeedTextPainter.paint(canvas, Offset(_offsetX+(vertLocationMsg.length*_charPixeslWidth), _offsetY - (_vertSpeedArrowFontSize-_vertLocationFontSize)/2));  
     }
   }
 
